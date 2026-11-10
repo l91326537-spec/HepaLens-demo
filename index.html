@@ -1,0 +1,2412 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>헤파렌즈 간독성 스크리너</title>
+<meta name="description" content="천연물·건강기능식품 성분의 분자 구조로 간독성(DILI) 위험을 1차 분류하는 브라우저 내장 AI 스크리너. 판정 근거와 통계를 함께 제시합니다.">
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+KR:wght@400;500;600;700&display=swap">
+
+<style>
+/* Layout: instrument console - fixed control column on the left, readout stack on the right. */
+:root{
+  --bg:#eef1f5; --surface:#ffffff; --surface-2:#f6f9fb; --line:#d6dee7;
+  --fg:#152532; --fg-dim:#5c7284; --fg-faint:#8699a8;
+  --accent:#1b4b74; --accent-soft:#e3ecf4; --accent-line:#b7cde0;
+  --high:#ab2b2b; --high-soft:#f8e6e4;
+  --mid:#9a6a0d;  --mid-soft:#faf0d9;
+  --low:#166b52;  --low-soft:#e0f2ea;
+  --paper:#ffffff;
+  --r:10px;
+  --font:"IBM Plex Sans KR",-apple-system,BlinkMacSystemFont,"Malgun Gothic",sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --bg:#0b141c; --surface:#121e28; --surface-2:#16242f; --line:#24353f;
+    --fg:#e7eef4; --fg-dim:#94a8b7; --fg-faint:#6d8294;
+    --accent:#74b2e2; --accent-soft:#15293a; --accent-line:#2a4a63;
+    --high:#ef7a70; --high-soft:#33201e;
+    --mid:#e2b45f;  --mid-soft:#2e2718;
+    --low:#56c69e;  --low-soft:#132d26;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0b141c; --surface:#121e28; --surface-2:#16242f; --line:#24353f;
+  --fg:#e7eef4; --fg-dim:#94a8b7; --fg-faint:#6d8294;
+  --accent:#74b2e2; --accent-soft:#15293a; --accent-line:#2a4a63;
+  --high:#ef7a70; --high-soft:#33201e;
+  --mid:#e2b45f;  --mid-soft:#2e2718;
+  --low:#56c69e;  --low-soft:#132d26;
+  color-scheme:dark;
+}
+
+*{box-sizing:border-box}
+/* author rules such as .status{display:flex} otherwise beat the UA rule for [hidden] */
+[hidden]{display:none !important}
+body{
+  background:var(--bg); color:var(--fg); font-family:var(--font);
+  font-size:15px; line-height:1.6; margin:0;
+  -webkit-font-smoothing:antialiased;
+}
+.wrap{
+  max-width:1180px; margin:0 auto;
+  padding-left:max(16px,env(safe-area-inset-left,0px));
+  padding-right:max(16px,env(safe-area-inset-right,0px));
+}
+h1,h2,h3{margin:0; text-wrap:balance; font-weight:600; letter-spacing:-.01em}
+p{margin:0}
+button{font:inherit; cursor:pointer}
+.mono{font-family:var(--mono); font-variant-numeric:tabular-nums}
+.eyebrow{
+  font-size:11px; font-weight:600; letter-spacing:.14em; text-transform:uppercase;
+  color:var(--fg-faint);
+}
+
+/* ---------- masthead ---------- */
+body::before{content:""; position:fixed; inset:0 0 auto; height:env(safe-area-inset-top,0px); z-index:10; background:var(--accent)}
+.masthead{background:var(--accent); color:#fff}
+:root[data-theme="dark"] .masthead, :root:not([data-theme="light"]) .masthead{color:#07131d}
+@media (prefers-color-scheme:light){:root:not([data-theme="dark"]) .masthead{color:#fff}}
+.masthead .wrap{
+  padding-block:18px 20px; display:flex; flex-wrap:wrap; gap:10px 24px;
+  align-items:baseline; justify-content:space-between;
+}
+.brand{display:flex; align-items:baseline; gap:10px; min-width:0}
+.brand b{font-size:23px; font-weight:700; letter-spacing:-.02em}
+.brand span{font-family:var(--mono); font-size:13px; opacity:.72}
+.tagline{font-size:13px; opacity:.82; min-width:0}
+
+/* ---------- shell ---------- */
+main{padding-block:22px 0}
+.cols{display:grid; grid-template-columns:1fr; gap:16px; align-items:start}
+.cols > *{min-width:0}
+@media (min-width:920px){
+  .cols{grid-template-columns:minmax(0,360px) minmax(0,1fr)}
+}
+.card{
+  background:var(--surface); border:1px solid var(--line); border-radius:var(--r);
+  padding:16px; min-width:0;
+}
+.card + .card{margin-top:16px}
+.card h2{font-size:13px; letter-spacing:.06em; text-transform:uppercase; color:var(--fg-dim); margin-bottom:12px}
+.card h2 .tag{
+  float:right; text-transform:none; letter-spacing:0; font-size:11px; font-weight:500;
+  color:var(--fg-faint);
+}
+
+/* ---------- console ---------- */
+textarea{
+  width:100%; min-height:72px; resize:vertical; padding:10px 11px;
+  border:1px solid var(--line); border-radius:8px; background:var(--surface-2);
+  color:var(--fg); font-family:var(--mono); font-size:13px; line-height:1.5;
+}
+input[type="text"],input[type="number"]{
+  width:100%; padding:9px 10px; border:1px solid var(--line); border-radius:8px;
+  background:var(--surface-2); color:var(--fg); font-family:var(--mono); font-size:13px;
+}
+textarea:focus-visible, input:focus-visible, button:focus-visible, select:focus-visible{
+  outline:2px solid var(--accent); outline-offset:2px;
+}
+.row{display:flex; gap:8px; margin-top:10px}
+.btn{
+  flex:1; padding:10px 14px; border-radius:8px; border:1px solid var(--accent);
+  background:var(--accent); color:var(--surface); font-weight:600; font-size:14px;
+}
+.btn:disabled{opacity:.5; cursor:not-allowed}
+.btn.ghost{background:transparent; color:var(--accent); flex:0 0 auto}
+.btn.sm{padding:7px 11px; font-size:12.5px; font-weight:500}
+.hint{font-size:12px; color:var(--fg-faint); margin-top:8px}
+.hint code{font-family:var(--mono); font-size:11.5px}
+.field{margin-top:11px}
+.field label{display:block; font-size:11.5px; color:var(--fg-dim); margin-bottom:5px; font-weight:500}
+.btn.wide{flex:1}
+.hint b{color:var(--fg-dim); font-weight:600}
+
+/* ---------- structure editor dialog ---------- */
+/* JSME needs ~430px to lay its toolbar out, and breaks below 360px. The console
+   column is 352px, so the editor gets its own panel rather than sharing it. */
+.dlg{
+  width:min(680px, calc(100vw - 24px));
+  max-height:calc(100vh - 24px); max-height:calc(100dvh - 24px);
+  padding:18px; overflow:auto;
+  border:1px solid var(--line); border-radius:12px;
+  background:var(--surface); color:var(--fg);
+  box-shadow:0 18px 48px rgba(9,20,30,.26);
+}
+.dlg::backdrop{background:rgba(9,20,30,.52)}
+.dlg-head{display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:13px}
+.dlg-head h2{font-size:13px; letter-spacing:.06em; text-transform:uppercase; color:var(--fg-dim)}
+.dlg-x{
+  appearance:none; -webkit-appearance:none; background:none; flex:0 0 auto;
+  border:1px solid var(--line); border-radius:7px; width:30px; height:30px;
+  line-height:1; font-size:13px; color:var(--fg-dim);
+}
+.dlg-x:hover{border-color:var(--accent); color:var(--accent)}
+
+/* JSME paints its own white canvas, so the shell stays paper-coloured in both themes. */
+.editor{
+  position:relative; background:var(--paper); border:1px solid var(--line);
+  border-radius:8px; overflow:hidden; min-height:320px;
+}
+.editor .overlay{
+  position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+  gap:9px; padding:18px; text-align:center; background:var(--paper);
+  font-size:13px; line-height:1.55; color:#5c7284;
+}
+
+/* ---------- mode tabs ---------- */
+.tabs{display:flex; gap:4px; background:var(--surface-2); border:1px solid var(--line);
+  border-radius:9px; padding:3px; margin-bottom:14px}
+.tabs button{
+  flex:1; border:0; background:transparent; color:var(--fg-dim); border-radius:7px;
+  padding:8px 6px; font-size:13px; font-weight:600;
+}
+.tabs button[aria-selected="true"]{background:var(--surface); color:var(--accent); box-shadow:0 1px 2px rgba(0,0,0,.06)}
+
+.chips{display:flex; flex-wrap:wrap; gap:6px}
+.chip{
+  border:1px solid var(--line); background:var(--surface-2); color:var(--fg);
+  border-radius:999px; padding:5px 11px; font-size:12.5px; white-space:nowrap;
+}
+.chip:hover{border-color:var(--accent); color:var(--accent)}
+.chip.drug{border-style:dashed}
+.group-label{font-size:11.5px; color:var(--fg-faint); margin:0 0 7px; font-weight:500}
+.group-label + .chips{margin-bottom:13px}
+
+.paper{
+  background:var(--paper); border:1px solid var(--line); border-radius:8px;
+  display:flex; align-items:center; justify-content:center; min-height:188px; padding:6px;
+}
+.paper svg{max-width:100%; height:auto}
+.paper .ph{color:#9aa7b2; font-size:12.5px}
+
+/* ---------- component rows ---------- */
+.comp{display:grid; grid-template-columns:minmax(0,1fr) 92px 30px; gap:6px; margin-bottom:6px; align-items:center}
+.comp input{font-size:12.5px; padding:8px 9px}
+.comp .del{
+  border:1px solid var(--line); background:var(--surface-2); color:var(--fg-dim);
+  border-radius:7px; padding:7px 0; font-size:14px; line-height:1;
+}
+.comp .del:hover{color:var(--high); border-color:var(--high)}
+.comp-head{display:grid; grid-template-columns:minmax(0,1fr) 92px 30px; gap:6px;
+  font-size:11px; color:var(--fg-faint); letter-spacing:.04em; margin-bottom:5px}
+.check{display:flex; align-items:flex-start; gap:8px; font-size:12.5px; color:var(--fg-dim); margin-top:12px}
+.check input{margin-top:4px; flex:0 0 auto}
+
+/* ---------- verdict ---------- */
+.verdict{
+  border:1px solid var(--line); border-left:5px solid var(--tier,var(--fg-faint));
+  background:var(--tier-soft,var(--surface-2)); border-radius:var(--r);
+  padding:16px 18px; display:grid; gap:14px;
+  grid-template-columns:minmax(0,1fr);
+}
+@media (min-width:640px){.verdict{grid-template-columns:minmax(0,1fr) auto; align-items:center}}
+.verdict .name{font-size:19px; font-weight:700; letter-spacing:-.02em}
+.verdict .sub{font-size:12.5px; color:var(--fg-dim); margin-top:2px}
+.tier-badge{
+  display:inline-flex; align-items:center; gap:7px; margin-bottom:7px;
+  font-size:12px; font-weight:700; letter-spacing:.08em; text-transform:uppercase;
+  color:var(--tier,var(--fg));
+}
+.tier-badge i{width:9px; height:9px; border-radius:50%; background:currentColor; display:inline-block}
+.readout{text-align:left}
+@media (min-width:640px){.readout{text-align:right}}
+.readout .big{font-size:40px; font-weight:700; line-height:1; letter-spacing:-.03em; color:var(--tier,var(--fg))}
+.readout .ci{font-size:12.5px; color:var(--fg-dim); margin-top:5px}
+
+/* ---------- metric tiles ---------- */
+.tiles{display:grid; gap:12px; grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}
+.tile{background:var(--surface-2); border:1px solid var(--line); border-radius:8px; padding:11px 12px; min-width:0}
+.tile .k{font-size:11px; color:var(--fg-faint); letter-spacing:.04em}
+.tile .v{font-size:19px; font-weight:600; margin-top:3px; letter-spacing:-.01em}
+.tile .n{font-size:11.5px; color:var(--fg-dim); margin-top:1px}
+
+/* ---------- banner ---------- */
+.banner{
+  border:1px solid var(--line); border-left:4px solid var(--tone,var(--fg-faint));
+  background:var(--tone-soft,var(--surface-2)); border-radius:8px; padding:11px 13px;
+  font-size:12.5px; color:var(--fg-dim); margin-bottom:14px;
+}
+.banner b{color:var(--tone,var(--fg)); display:block; font-size:12.5px; margin-bottom:3px}
+
+/* ---------- exposure matrix ---------- */
+.matrix{display:grid; grid-template-columns:auto repeat(4,minmax(0,1fr)); gap:3px; font-size:11.5px}
+.matrix > div{padding:7px 4px; text-align:center; border-radius:5px; background:var(--surface-2);
+  color:var(--fg-faint); min-width:0}
+.matrix .hd{background:transparent; font-size:10.5px; letter-spacing:.03em; color:var(--fg-faint)}
+.matrix .rh{background:transparent; text-align:right; padding-right:8px; font-weight:600; color:var(--fg-dim); white-space:nowrap}
+.matrix .c{font-weight:600}
+.matrix .p0{background:var(--low-soft); color:var(--low)}
+.matrix .p1{background:var(--mid-soft); color:var(--mid)}
+.matrix .p2{background:var(--high-soft); color:var(--high)}
+.matrix .p3{background:var(--high); color:#fff}
+.matrix .here{outline:2.5px solid var(--fg); outline-offset:1px}
+.matrix-cap{display:flex; justify-content:space-between; font-size:10.5px; color:var(--fg-faint); margin-top:7px}
+
+/* ---------- alerts ---------- */
+.alert-row{
+  display:grid; grid-template-columns:auto minmax(0,1fr); gap:10px;
+  padding:11px 0; border-bottom:1px solid var(--line); cursor:pointer; text-align:left;
+  background:transparent; border-left:0; border-right:0; border-top:0; width:100%; color:inherit;
+}
+.alert-row:last-child{border-bottom:0}
+.alert-row:hover .a-name{color:var(--accent)}
+.alert-row .dot{width:9px; height:9px; border-radius:50%; margin-top:6px; flex:0 0 auto}
+.a-name,.a-mech,.a-stat{display:block}
+.a-name{font-size:13.5px; font-weight:600; line-height:1.45}
+.a-mech{font-size:12px; color:var(--fg-dim); margin-top:3px; line-height:1.55}
+.a-stat{font-size:11.5px; color:var(--fg-faint); margin-top:4px; font-family:var(--mono)}
+.a-name .tierpill, .a-name span{display:inline}
+.tierpill{display:inline-block; font-size:10.5px; font-weight:600; padding:1px 7px;
+  border-radius:999px; margin-left:7px; vertical-align:1px}
+.t-strong{background:var(--high-soft); color:var(--high)}
+.t-moderate{background:var(--mid-soft); color:var(--mid)}
+.t-common{background:var(--surface-2); color:var(--fg-faint)}
+
+/* ---------- table ---------- */
+.scroll{overflow-x:auto; margin:0 -4px; padding:0 4px}
+table{border-collapse:collapse; width:100%; font-size:13px; min-width:520px}
+th,td{text-align:left; padding:8px 10px; border-bottom:1px solid var(--line); vertical-align:top}
+th{font-size:11px; letter-spacing:.06em; text-transform:uppercase; color:var(--fg-faint); font-weight:600; white-space:nowrap}
+tbody tr:last-child td{border-bottom:0}
+td.num{font-family:var(--mono); font-variant-numeric:tabular-nums; white-space:nowrap}
+tbody tr.sel{background:var(--accent-soft)}
+.pill{display:inline-block; padding:2px 8px; border-radius:999px; font-size:11.5px; font-weight:600; white-space:nowrap}
+.pill.p1{background:var(--high-soft); color:var(--high)}
+.pill.p0{background:var(--low-soft); color:var(--low)}
+.pill.pn{background:var(--surface-2); color:var(--fg-dim); font-weight:500}
+.pill.low{background:var(--low-soft); color:var(--low)}
+.pill.mid{background:var(--mid-soft); color:var(--mid)}
+.pill.high{background:var(--high-soft); color:var(--high)}
+
+/* ---------- history ---------- */
+.hist-item{
+  display:grid; grid-template-columns:minmax(0,1fr) auto; gap:8px; align-items:baseline;
+  padding:7px 0; border-bottom:1px solid var(--line); width:100%; text-align:left;
+  background:transparent; border-left:0; border-right:0; border-top:0; color:inherit; cursor:pointer;
+}
+.hist-item:last-child{border-bottom:0}
+.hist-item:hover .hl{color:var(--accent)}
+.hl{font-size:12.5px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.ht{font-size:10.5px; color:var(--fg-faint); font-family:var(--mono)}
+
+/* ---------- misc ---------- */
+.note{font-size:12.5px; color:var(--fg-dim)}
+.note strong{color:var(--fg)}
+.note + .note{margin-top:7px}
+.bar{height:7px; border-radius:4px; background:var(--surface-2); overflow:hidden; border:1px solid var(--line)}
+.bar i{display:block; height:100%; background:var(--accent)}
+.legend{display:flex; flex-wrap:wrap; gap:12px; font-size:11.5px; color:var(--fg-dim); margin-top:9px}
+.legend span{display:inline-flex; align-items:center; gap:5px}
+.legend b{width:10px; height:10px; border-radius:2px; display:inline-block}
+details{border-top:1px solid var(--line); padding-top:12px; margin-top:14px}
+details summary{cursor:pointer; font-size:12.5px; color:var(--fg-dim); font-weight:500}
+details[open] summary{margin-bottom:10px}
+footer{margin-top:28px; border-top:1px solid var(--line); background:var(--surface)}
+footer .wrap{padding-block:18px 26px; display:grid; gap:7px}
+footer p{font-size:12px; color:var(--fg-dim)}
+.status{
+  display:flex; align-items:center; gap:9px; font-size:13px; color:var(--fg-dim);
+  padding:11px 13px; border:1px dashed var(--line); border-radius:8px; background:var(--surface-2);
+}
+.spin{
+  width:14px; height:14px; border:2px solid var(--accent-line); border-top-color:var(--accent);
+  border-radius:50%; animation:sp .8s linear infinite; flex:0 0 auto;
+}
+@keyframes sp{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){.spin{animation-duration:3s}}
+.err{color:var(--high); font-size:13px; margin-top:9px}
+.empty{font-size:12.5px; color:var(--fg-faint); padding:4px 0}
+
+/* ---------- print / PDF report ---------- */
+.printhead{display:none}
+/* ---------- verdict / evidence view switch ---------- */
+.vswitch{display:inline-flex; gap:0; border:1px solid var(--line); border-radius:8px; overflow:hidden; margin:14px 0 2px}
+.vswitch button{
+  appearance:none; border:0; background:var(--surface); color:var(--fg-dim);
+  padding:8px 16px; font-size:13.5px; font-weight:600; white-space:nowrap;
+}
+.vswitch button + button{border-left:1px solid var(--line)}
+.vswitch button[aria-selected="true"]{background:var(--accent); color:var(--surface)}
+.vhide{display:none}
+
+/* ---------- score decomposition ---------- */
+.wf{display:grid; gap:7px}
+.wf-row{display:grid; grid-template-columns:minmax(92px,auto) minmax(0,1fr) 66px; gap:10px; align-items:center; font-size:13px}
+.wf-row.total{border-top:1px solid var(--line); padding-top:9px; font-weight:600}
+.wf-row .lab{color:var(--fg-dim); min-width:0}
+.wf-row.total .lab{color:var(--fg)}
+.wf-row .amt{font-family:var(--mono); font-variant-numeric:tabular-nums; text-align:right; white-space:nowrap}
+.dv{position:relative; display:block; height:16px; background:var(--surface-2); border:1px solid var(--line); border-radius:4px; overflow:hidden}
+.dv::before{content:""; position:absolute; left:50%; top:0; bottom:0; width:1px; background:var(--line)}
+.dv i{position:absolute; top:2px; bottom:2px; border-radius:2px}
+.dv i.up{background:var(--high)}
+.dv i.dn{background:var(--low)}
+
+/* ---------- atom sensitivity map ---------- */
+.amap{display:grid; gap:14px; grid-template-columns:minmax(0,1fr)}
+@media (min-width:780px){.amap{grid-template-columns:minmax(0,290px) minmax(0,1fr)}}
+.amap > *{min-width:0}
+.heat-legend{display:flex; align-items:center; gap:9px; font-size:11.5px; color:var(--fg-dim); margin-top:9px; flex-wrap:wrap}
+.heat-bar{height:9px; width:88px; border-radius:3px; background:linear-gradient(90deg,var(--low),var(--surface-2),var(--high)); border:1px solid var(--line)}
+
+/* ---------- ensemble members ---------- */
+.members{display:grid; gap:8px}
+.mrow{display:grid; grid-template-columns:60px minmax(0,1fr) 42px; gap:10px; align-items:center; font-size:13px}
+.mrow .ml{color:var(--fg-dim); font-size:12px}
+.mbar{height:14px; background:var(--surface-2); border:1px solid var(--line); border-radius:4px; overflow:hidden; position:relative}
+.mbar i{display:block; height:100%; background:var(--accent)}
+.mbar u{position:absolute; top:-2px; bottom:-2px; width:2px; background:var(--fg); opacity:.55}
+
+.callout{
+  border-left:3px solid var(--mid); background:var(--mid-soft); border-radius:0 8px 8px 0;
+  padding:10px 13px; font-size:12.5px; color:var(--fg-dim); margin-top:13px;
+}
+.callout strong{color:var(--fg)}
+
+@media print{
+  :root{
+    --bg:#fff; --surface:#fff; --surface-2:#fff; --line:#b9c4ce;
+    --fg:#000; --fg-dim:#333; --fg-faint:#555; --accent:#1b4b74;
+    --high:#8f1f1f; --mid:#7a5208; --low:#0d5240;
+    --high-soft:#fff; --mid-soft:#fff; --low-soft:#fff; --accent-soft:#fff;
+  }
+  @page{margin:14mm 12mm}
+  body{background:#fff; font-size:10.5pt}
+  .masthead,.console,footer,.noprint,#boot{display:none !important}
+  body::before{display:none}
+  main{padding:0}
+  .wrap{max-width:none; padding:0}
+  .cols{display:block}
+  .card{border:1px solid var(--line); break-inside:avoid; page-break-inside:avoid; margin-bottom:10px}
+  .card + .card{margin-top:0}
+  .verdict{border:1.5px solid #000; break-inside:avoid}
+  details{display:block}
+  details > summary{display:none}
+  .scroll{overflow:visible}
+  table{min-width:0; font-size:9pt}
+  .printhead{display:block; border-bottom:2px solid var(--accent); padding-bottom:8px; margin-bottom:12px}
+  .printhead .pt{font-size:15pt; font-weight:700; color:var(--accent)}
+  .printhead .pm{font-size:9pt; color:#333; margin-top:3px}
+  .vswitch{display:none}
+  .vhide{display:block}
+  .printfoot{display:block !important; margin-top:12px; border-top:1px solid var(--line);
+    padding-top:7px; font-size:8.5pt; color:#333}
+  .matrix .p3{background:#fff; color:#8f1f1f; outline:1px solid #8f1f1f}
+  .matrix .here{outline:2.5px solid #000}
+}
+.printfoot{display:none}
+</style>
+</head>
+<body>
+<header class="masthead">
+  <div class="wrap">
+    <div class="brand"><b>헤파렌즈</b><span>HepaLens</span></div>
+    <div class="tagline">천연물 · 건강기능식품 간독성 AI 1차 스크리닝 &nbsp;·&nbsp; 우석대학교 약학과</div>
+  </div>
+</header>
+
+<main class="wrap">
+  <div class="cols">
+    <!-- ================= console ================= -->
+    <div class="console noprint">
+      <section class="card">
+        <div class="tabs" role="tablist">
+          <button role="tab" id="tab-single" aria-selected="true">단일 성분</button>
+          <button role="tab" id="tab-multi" aria-selected="false">처방 · 제품 단위</button>
+        </div>
+
+        <div id="pane-single">
+          <textarea id="smiles" spellcheck="false" placeholder="SMILES 또는 성분명 (예: curcumin)"></textarea>
+          <div class="field">
+            <label for="dose">1일 섭취량 (mg/일) — 선택 입력</label>
+            <input type="number" id="dose" min="0" step="any" placeholder="예: 500">
+          </div>
+          <div class="field">
+            <label for="logp">logP 측정값 — 선택 입력 (비우면 Crippen 추정값 사용)</label>
+            <input type="number" id="logp" step="any" placeholder="예: 2.8">
+          </div>
+          <div class="row">
+            <button class="btn" id="run">간독성 예측</button>
+            <button class="btn ghost" id="clear">지움</button>
+          </div>
+          <div class="row">
+            <button class="btn ghost wide" id="open-draw">구조 그려서 입력</button>
+          </div>
+          <p class="hint">SMILES를 붙여넣거나 영문 성분명(<code>curcumin</code>)을 입력하세요. 섭취량을 넣으면 노출 축이 함께 평가됩니다. SMILES를 모르면 <b>구조 그려서 입력</b>으로 직접 그릴 수 있습니다.</p>
+        </div>
+
+        <div id="pane-multi" hidden>
+          <div class="comp-head"><span>성분 (SMILES 또는 성분명)</span><span>mg/일</span><span></span></div>
+          <div id="comps"></div>
+          <div class="row">
+            <button class="btn sm ghost" id="addcomp">+ 성분 추가</button>
+            <button class="btn sm ghost" id="drawcomp">구조 그려서 추가</button>
+            <button class="btn sm ghost" id="loadpreset">예시 조성</button>
+          </div>
+          <div class="field">
+            <label for="csv">CSV 불러오기 — 열 이름: name, smiles, dose_mg</label>
+            <input type="file" id="csv" accept=".csv,text/csv" style="font-size:12px">
+          </div>
+          <label class="check">
+            <input type="checkbox" id="asproduct" checked>
+            <span>이 성분들을 <strong>하나의 제품</strong>으로 평가 (조성 가중 요약 표시). 끄면 서로 무관한 후보들을 한 번에 돌리는 배치 모드가 됩니다.</span>
+          </label>
+          <div class="row">
+            <button class="btn" id="runmulti">처방 평가</button>
+            <button class="btn ghost" id="clearmulti">지움</button>
+          </div>
+        </div>
+
+        <div id="err" class="err" hidden></div>
+      </section>
+
+      <section class="card" id="card-chips">
+        <h2>시연용 성분</h2>
+        <p class="group-label">천연물 · 건강기능식품 원료</p>
+        <div class="chips" id="chips-nat"></div>
+        <p class="group-label">의약품 대조군 (FDA DILIrank 등재)</p>
+        <div class="chips" id="chips-drug"></div>
+      </section>
+
+      <section class="card" id="card-struct">
+        <h2>구조 <span class="tag" id="hl-tag"></span></h2>
+        <div class="paper" id="paper"><span class="ph">분자를 입력하면 구조가 표시됩니다</span></div>
+      </section>
+
+      <section class="card">
+        <h2>예측 이력 <span class="tag"><button class="btn sm ghost" id="histclear" style="padding:2px 7px">비우기</button></span></h2>
+        <div id="hist-list"><p class="empty">아직 기록이 없습니다.</p></div>
+        <div class="row"><button class="btn sm ghost" id="histcsv">이력 CSV 내려받기</button></div>
+        <p class="hint">이 브라우저에만 저장되며 서버로 전송되지 않습니다 (최근 50건).</p>
+      </section>
+    </div>
+
+    <!-- ================= readout ================= -->
+    <div>
+      <div class="printhead">
+        <div class="pt">헤파렌즈 간독성 스크리닝 리포트</div>
+        <div class="pm" id="print-meta"></div>
+      </div>
+
+      <div id="boot" class="status"><span class="spin"></span><span>화학 엔진과 모델을 불러오는 중…</span></div>
+
+      <!-- ---------- single-compound readout ---------- -->
+      <div id="result" hidden>
+        <div class="verdict" id="verdict">
+          <div>
+            <div class="tier-badge" id="tier"><i></i><span></span></div>
+            <div class="name" id="qname">—</div>
+            <div class="sub" id="qsub"></div>
+          </div>
+          <div class="readout">
+            <div class="big" id="prob">—</div>
+            <div class="ci" id="ci"></div>
+          </div>
+        </div>
+        <p class="note" id="qnote" style="margin:10px 2px 0; padding:0 2px" hidden></p>
+        <div class="banner" id="saltwarn" hidden></div>
+
+        <div class="row noprint" style="margin-top:14px">
+          <button class="btn ghost" id="print1">리포트 인쇄 / PDF 저장</button>
+          <button class="btn ghost" id="copylink">결과 링크 복사</button>
+        </div>
+
+        <div class="vswitch noprint" role="tablist" aria-label="결과 보기 전환">
+          <button role="tab" id="vs-verdict" aria-selected="true">판정</button>
+          <button role="tab" id="vs-evidence" aria-selected="false">자세한 근거</button>
+        </div>
+
+        <div id="view-verdict">
+
+        <section class="card">
+          <h2>통계 요약</h2>
+          <div class="banner" id="adbanner" hidden></div>
+          <div class="tiles">
+            <div class="tile">
+              <div class="k">위험 점수</div>
+              <div class="v mono" id="t-prob">—</div>
+              <div class="n">앙상블 5개 모델 평균 (0–1)</div>
+            </div>
+            <div class="tile">
+              <div class="k">앙상블 불일치 폭</div>
+              <div class="v mono" id="t-ci">—</div>
+              <div class="n">모델 5개 산포 · 신뢰도 아님</div>
+            </div>
+            <div class="tile">
+              <div class="k">적용 범위 (AD)</div>
+              <div class="v" id="t-ad">—</div>
+              <div class="n" id="t-ad-n">최근접 Tanimoto</div>
+            </div>
+            <div class="tile">
+              <div class="k">학습셋 내 백분위</div>
+              <div class="v mono" id="t-pct">—</div>
+              <div class="n" id="t-pct-n">DILIrank 기준</div>
+            </div>
+            <div class="tile">
+              <div class="k">1일 섭취량</div>
+              <div class="v mono" id="t-dose">—</div>
+              <div class="n" id="t-dose-n">입력값</div>
+            </div>
+            <div class="tile">
+              <div class="k">노출 등급</div>
+              <div class="v" id="t-exp">—</div>
+              <div class="n" id="t-exp-n">용량 구간 기준</div>
+            </div>
+          </div>
+
+          <div style="margin-top:16px">
+            <p class="eyebrow" style="margin-bottom:8px">학습셋 점수 분포에서의 위치</p>
+            <div id="hist"></div>
+            <div class="legend">
+              <span><b style="background:var(--high)"></b>간독성 양성 (DILIrank Most/Less)</span>
+              <span><b style="background:var(--low)"></b>간독성 음성 (No-DILI)</span>
+              <span><b style="background:var(--fg)"></b>입력 분자</span>
+            </div>
+          </div>
+        </section>
+
+        <section class="card" id="card-exp">
+          <h2>용량 · 노출 축</h2>
+          <div id="expbody"></div>
+        </section>
+
+        <section class="card" id="card-freq">
+          <h2>이 점수대의 실제 관측 빈도</h2>
+          <div id="freqbody"></div>
+        </section>
+
+        <section class="card" id="card-alerts">
+          <h2>대사 활성화 구조 경보</h2>
+          <div id="alertbody"></div>
+        </section>
+
+        </div><!-- /view-verdict -->
+
+        <div id="view-evidence" class="vhide">
+
+        <section class="card">
+          <h2>점수가 계산된 과정</h2>
+          <p class="note" style="margin-bottom:12px">브라우저에서 돌아가는 배포 모델은 <strong>로지스틱 회귀</strong>입니다. 내부 점수가 더하기로만 이루어져 있어, SHAP 같은 사후 근사 없이 그대로 분해됩니다.</p>
+          <div class="wf" id="wf"></div>
+          <div id="sigmap" style="margin-top:13px; padding-top:13px; border-top:1px solid var(--line)"></div>
+          <div class="callout" id="satnote" hidden></div>
+          <details>
+            <summary>이 분해가 정확한 이유</summary>
+            <p class="note">로지스틱 회귀의 내부 점수(로짓)는 <strong>절편 + Σ(계수 × 표준화된 특징값)</strong> 입니다. 더하기만으로 구성되므로 각 항의 기여를 임의로 배분할 필요가 없고, 위 세 항의 합은 내부 점수와 소수점 여섯 자리까지 일치합니다. 사후 근사 설명이 필요한 쪽은 비선형 모델입니다. 저희는 교사(D-MPNN + Random Forest)의 판단을 선형 학생 모델로 증류했기 때문에, 성능을 거의 유지하면서 설명 가능성을 구조적으로 확보했습니다.</p>
+          </details>
+        </section>
+
+        <section class="card">
+          <h2>구조의 어느 부분이 점수를 움직였나</h2>
+          <p class="note" style="margin-bottom:12px">원자를 하나씩 지워 보고 내부 점수가 얼마나 바뀌는지 측정했습니다 (민감도 분석).</p>
+          <div class="amap">
+            <div>
+              <div class="paper" id="heatpaper" style="min-height:220px"><span class="ph">계산 중…</span></div>
+              <div class="heat-legend"><span>점수를 낮춤</span><span class="heat-bar"></span><span>점수를 높임</span></div>
+            </div>
+            <div>
+              <div class="scroll"><table style="min-width:300px"><thead><tr><th>원자</th><th>내부 점수 변화</th><th>방향</th></tr></thead><tbody id="atomtab"></tbody></table></div>
+            </div>
+          </div>
+          <div class="callout">
+            <strong>이 지도는 더하기로 분해한 값이 아닙니다.</strong> 원자 하나를 지우면 그 원자가 포함된 반경 0·1·2의 부분구조 지문이 한꺼번에 사라지기 때문에, 개별 변화량의 합은 전체 점수와 같지 않습니다. “이 자리를 건드리면 모델의 판단이 크게 흔들린다”는 민감도로만 읽어야 하고, 그 자리가 실제 독성 기전이라는 뜻은 아닙니다. 기전 쪽 근거는 ‘대사 활성화 구조 경보’를 보십시오.
+          </div>
+        </section>
+
+        <section class="card">
+          <h2>물성 12개의 기여도</h2>
+          <p class="note" style="margin-bottom:12px">계수 × 표준화된 값. 이 항들의 합은 위 ‘물성 기여’와 정확히 같습니다.</p>
+          <div class="scroll"><table><thead><tr><th>물성</th><th>측정값</th><th>학습셋 대비 (z)</th><th>기여</th><th></th></tr></thead><tbody id="desctab"></tbody></table></div>
+          <p class="note" style="margin-top:11px">z는 학습 데이터 평균에서 표준편차 몇 배만큼 떨어져 있는지입니다. 0에 가까우면 흔한 값이라 점수를 밀지 않고, 절댓값이 크면 학습셋에서 이례적인 값이라는 뜻입니다.</p>
+        </section>
+
+        <section class="card">
+          <h2>앙상블 5개 모델이 각각 뭐라고 했나</h2>
+          <p class="note" style="margin-bottom:12px">서로 다른 부트스트랩 표본으로 학습한 5개 모델입니다. 불일치가 클수록 경계 사례지만, 이 산포가 실제 오차를 추적하는지는 측정으로 확인되지 않았습니다.</p>
+          <div class="members" id="members"></div>
+          <p class="note" id="spread" style="margin-top:12px"></p>
+        </section>
+
+        <section class="card">
+          <h2>유사 화합물 — 실제 임상 결과</h2>
+          <p class="note" style="margin-bottom:11px">입력 분자와 구조가 가장 가까운 FDA DILIrank 등재 의약품입니다. 모델의 판단 근거를 사람이 직접 확인할 수 있습니다.</p>
+          <p class="note" id="nnwarn" style="margin-bottom:11px; color:var(--mid)" hidden></p>
+          <div class="scroll"><table>
+            <thead><tr><th>화합물</th><th>유사도</th><th>DILIrank</th><th>중증도</th><th>LiverTox</th><th>손상 양상</th></tr></thead>
+            <tbody id="nn"></tbody>
+          </table></div>
+          <details>
+            <summary>분자 물성 (모델 입력 기술자)</summary>
+            <div class="scroll"><table><tbody id="desc"></tbody></table></div>
+          </details>
+        </section>
+
+        <section class="card noprint">
+          <h2>모델 카드</h2>
+          <div id="modelcard"></div>
+        </section>
+
+        <section class="card">
+          <h2>이 점수로 하면 안 되는 것</h2>
+          <div id="limits"></div>
+        </section>
+
+        </div><!-- /view-evidence -->
+      </div>
+
+      <!-- ---------- formulation / batch readout ---------- -->
+      <div id="mresult" hidden>
+        <div class="verdict" id="mverdict">
+          <div>
+            <div class="tier-badge" id="mtier"><i></i><span></span></div>
+            <div class="name" id="mname">—</div>
+            <div class="sub" id="msub"></div>
+          </div>
+          <div class="readout">
+            <div class="big" id="mprob">—</div>
+            <div class="ci" id="mci"></div>
+          </div>
+        </div>
+
+        <div class="row noprint" style="margin-top:14px">
+          <button class="btn ghost" id="print2">리포트 인쇄 / PDF 저장</button>
+          <button class="btn ghost" id="mcsv">결과 CSV 내려받기</button>
+        </div>
+
+        <section class="card">
+          <h2>성분별 결과</h2>
+          <div class="banner" id="mbanner" hidden></div>
+          <div class="scroll"><table>
+            <thead><tr>
+              <th>성분</th><th>mg/일</th><th>조성비</th><th>위험 점수</th><th>등급</th>
+              <th>AD</th><th>노출</th><th>우선순위</th><th>경보</th>
+            </tr></thead>
+            <tbody id="mrows"></tbody>
+          </table></div>
+          <p class="note" id="mfail" style="margin-top:10px" hidden></p>
+        </section>
+
+        <section class="card" id="mcard-sum">
+          <h2>처방 단위 요약</h2>
+          <div id="msum"></div>
+        </section>
+
+        <section class="card" id="mcard-cyp" hidden>
+          <h2>성분 간 상호작용 — CYP 메모</h2>
+          <div id="mcyp"></div>
+        </section>
+
+        <section class="card" id="mcard-alerts">
+          <h2>제품 전체의 대사 활성화 경보</h2>
+          <div id="malerts"></div>
+        </section>
+      </div>
+
+      <div class="printfoot">
+        헤파렌즈(HepaLens)는 연구·교육용 1차 스크리닝 도구입니다. 위험 점수는 확률이 아니며 상대 순위 지표입니다.
+        의약품·건강기능식품의 안전성 판정, 진단, 복용 결정의 근거로 사용할 수 없고 규제기관 제출용 자료가 아닙니다.
+        실제 안전성은 오가노이드·동물·임상 시험으로 확인해야 합니다.
+      </div>
+    </div>
+  </div>
+</main>
+
+<dialog id="drawdlg" class="dlg noprint" aria-labelledby="drawdlg-h">
+  <div class="dlg-head">
+    <h2 id="drawdlg-h">구조 그리기</h2>
+    <button class="dlg-x" id="draw-close" aria-label="닫기" title="닫기">✕</button>
+  </div>
+  <div class="editor" id="editor">
+    <div id="jsme"></div>
+    <div class="overlay" id="jsme-msg"><span class="spin"></span><span>구조 편집기를 불러오는 중…</span></div>
+  </div>
+  <div class="row">
+    <button class="btn" id="run-draw">이 구조로 예측</button>
+    <button class="btn ghost" id="draw-load" title="지금 입력된 분자를 편집기로 불러옵니다">가져오기</button>
+    <button class="btn ghost" id="draw-clear">비움</button>
+  </div>
+  <p class="hint" id="draw-hint">예측을 누르면 그린 구조가 표준 SMILES로 변환되어 입력란에 채워지고 결과가 갱신됩니다. <b>가져오기</b>는 지금 분석 중인 분자를 편집기로 불러와 치환기만 바꿔볼 때 쓰세요.</p>
+  <p class="err" id="draw-err" hidden></p>
+</dialog>
+
+<footer class="noprint">
+  <div class="wrap">
+    <p><strong>헤파렌즈 HepaLens</strong> · Chemprop D-MPNN(Tox21 사전학습 → DILIrank 파인튜닝) 교사 모델을 브라우저용 경량 모델로 증류한 시연판입니다.</p>
+    <p>연구·교육용 1차 스크리닝 도구입니다. 의약품·건강기능식품의 안전성 판정, 진단, 복용 결정의 근거로 사용할 수 없으며, 규제기관 제출용 자료가 아닙니다. 실제 안전성은 오가노이드·동물·임상 시험으로 확인해야 합니다.</p>
+  </div>
+</footer>
+
+<script src="https://cdn.jsdelivr.net/npm/@rdkit/rdkit@2025.3.4-1.0.0/dist/RDKit_minimal.js"></script>
+<script>
+(function(){
+  'use strict';
+  var DESC_KEYS = ['amw','CrippenClogP','tpsa','NumHBD','NumHBA','NumRotatableBonds',
+                   'NumRings','NumAromaticRings','FractionCSP3','NumHeavyAtoms',
+                   'NumHeteroatoms','labuteASA'];
+  var DESC_LABEL = {amw:'분자량 (g/mol)', CrippenClogP:'logP (Crippen)', tpsa:'TPSA (Å²)',
+    NumHBD:'수소결합 주개', NumHBA:'수소결합 받개', NumRotatableBonds:'회전 가능 결합',
+    NumRings:'고리 수', NumAromaticRings:'방향족 고리', FractionCSP3:'sp³ 탄소 비율',
+    NumHeavyAtoms:'중원자 수', NumHeteroatoms:'헤테로원자 수', labuteASA:'Labute ASA'};
+  var TIERS = [
+    {max:0.35, key:'low',  ko:'낮음', act:'개발 진행 — 통상 품질관리로 충분',           v:'--low'},
+    {max:0.65, key:'mid',  ko:'주의', act:'간 오가노이드 실험으로 확인 권고',           v:'--mid'},
+    {max:1.01, key:'high', ko:'높음', act:'실험 전 배합·함량 재검토 필요',              v:'--high'}
+  ];
+  // Screening priority = structural tier x exposure band. A rule table, not a model:
+  // the structural score is never rescaled by dose, the two axes stay separate.
+  var PRIORITY = [
+    [0, 0, 1, 1],
+    [0, 1, 2, 2],
+    [1, 2, 3, 3]
+  ];
+  var PRIO = [
+    {ko:'관찰',      act:'통상 품질관리로 충분합니다.'},
+    {ko:'확인 권고', act:'오가노이드 시험 후보로 올려둘 수준입니다.'},
+    {ko:'우선 확인', act:'실험 우선순위 상위에 두십시오.'},
+    {ko:'즉시 확인', act:'실험 전에 배합·함량을 다시 보십시오.'}
+  ];
+  var HIST_KEY = 'hepalens.history.v1';
+  var PRESET = [
+    {q:'Silibinin',  mg:150},
+    {q:'Curcumin',   mg:200},
+    {q:'Epigallocatechin gallate', mg:300},
+    {q:'Piperine',   mg:5}
+  ];
+
+  var RDKit = null, MODEL = null, DATA = null, REF = null, CTX = null;
+  var QALERT = [];               // compiled SMARTS, parallel to CTX.alerts
+  var LAST = null, LASTM = null; // last single / multi result
+  var $ = function(id){ return document.getElementById(id); };
+
+  /* ---------------- bit helpers ---------------- */
+  function hexToBits(hex){
+    var out = new Uint8Array(hex.length * 4);
+    for (var i = 0; i < hex.length; i++){
+      var v = parseInt(hex[i], 16);
+      out[i*4]   = (v >> 3) & 1; out[i*4+1] = (v >> 2) & 1;
+      out[i*4+2] = (v >> 1) & 1; out[i*4+3] =  v       & 1;
+    }
+    return out;
+  }
+  function strToBits(s){
+    var out = new Uint8Array(s.length);
+    for (var i = 0; i < s.length; i++) out[i] = s.charCodeAt(i) - 48;
+    return out;
+  }
+  function tanimoto(a, b){
+    var both = 0, either = 0;
+    for (var i = 0; i < a.length; i++){
+      if (a[i] | b[i]) { either++; if (a[i] & b[i]) both++; }
+    }
+    return either ? both / either : 0;
+  }
+
+  /* ---------------- model ---------------- */
+  function featurize(mol){
+    var fp = mol.get_morgan_fp(JSON.stringify({radius:2, nBits:2048}));
+    var d  = JSON.parse(mol.get_descriptors());
+    var x  = new Float64Array(2048 + DESC_KEYS.length);
+    for (var i = 0; i < 2048; i++) x[i] = fp.charCodeAt(i) - 48;
+    for (var j = 0; j < DESC_KEYS.length; j++) x[2048 + j] = Number(d[DESC_KEYS[j]]);
+    return {x:x, desc:d};
+  }
+  function runModel(x){
+    var n = x.length, z = new Float64Array(n), i, k;
+    for (i = 0; i < n; i++) z[i] = (x[i] - MODEL.mean[i]) / MODEL.std[i];
+    var nm = MODEL.models.length, nd = DESC_KEYS.length, nfp = n - nd;
+    var b = 0, fp = 0, de = 0, logits = [], dc = new Float64Array(nd);
+    for (var mi = 0; mi < nm; mi++){
+      var m = MODEL.models[mi], sc = m.intercept, c = m.coef, t;
+      b += m.intercept;
+      for (k = 0; k < nfp; k++){ t = z[k] * c[k]; fp += t; sc += t; }
+      for (k = 0; k < nd; k++){ t = z[nfp + k] * c[nfp + k]; de += t; dc[k] += t; sc += t; }
+      logits.push(sc);
+    }
+    var ps = logits.map(function(v){ return 1 / (1 + Math.exp(-v)); });
+    var mu = ps.reduce(function(a,c2){return a+c2;},0) / nm;
+    var sd = Math.sqrt(ps.reduce(function(a,c2){return a + (c2-mu)*(c2-mu);},0) / nm);
+    return {p:mu, sd:sd,
+            lo:Math.max(0, mu - 1.96*sd), hi:Math.min(1, mu + 1.96*sd),
+            logits:logits, probs:ps,
+            intercept:b/nm, fpPart:fp/nm, descPart:de/nm, logit:(b+fp+de)/nm,
+            descContrib:Array.prototype.map.call(dc, function(v){ return v/nm; }),
+            z:z};
+  }
+  function tierOf(p){
+    for (var i = 0; i < TIERS.length; i++) if (p < TIERS[i].max) return TIERS[i];
+    return TIERS[2];
+  }
+  function tierIdx(p){ return p < 0.35 ? 0 : p < 0.65 ? 1 : 2; }
+
+  /* ---------------- atom-occlusion sensitivity ---------------- */
+  var Z2SYM = {1:'H',5:'B',6:'C',7:'N',8:'O',9:'F',11:'Na',12:'Mg',13:'Al',14:'Si',15:'P',
+               16:'S',17:'Cl',19:'K',20:'Ca',24:'Cr',25:'Mn',26:'Fe',27:'Co',28:'Ni',
+               29:'Cu',30:'Zn',33:'As',34:'Se',35:'Br',47:'Ag',53:'I',56:'Ba',78:'Pt',80:'Hg'};
+  function pad3(n, w){ var t = String(n); while (t.length < w) t = ' ' + t; return t; }
+
+  // delete one atom (and its bonds) from a V2000 molblock, renumbering what is left
+  function delAtom(mb, idx){
+    var lines = mb.split('\n');
+    if (lines.length < 5) return null;
+    var na = parseInt(lines[3].substr(0, 3), 10), nb = parseInt(lines[3].substr(3, 3), 10);
+    if (!(na > 0) || idx >= na) return null;
+    var atoms = lines.slice(4, 4 + na);
+    var bonds = lines.slice(4 + na, 4 + na + nb);
+    var rest  = lines.slice(4 + na + nb);
+    atoms.splice(idx, 1);
+    var nbonds = [], i, L;
+    for (i = 0; i < bonds.length; i++){
+      L = bonds[i];
+      var a = parseInt(L.substr(0, 3), 10), b = parseInt(L.substr(3, 3), 10);
+      if (a === idx + 1 || b === idx + 1) continue;
+      if (a > idx + 1) a--;
+      if (b > idx + 1) b--;
+      nbonds.push(pad3(a, 3) + pad3(b, 3) + L.substr(6));
+    }
+    var props = [];
+    for (i = 0; i < rest.length; i++){
+      L = rest[i];
+      var pm = /^M  (CHG|ISO|RAD)/.exec(L);
+      if (pm){
+        var cnt = parseInt(L.substr(6, 3), 10), ent = [];
+        for (var j = 0; j < cnt; j++){
+          var at = parseInt(L.substr(9 + j*8, 4), 10);
+          var vl = parseInt(L.substr(13 + j*8, 4), 10);
+          if (at === idx + 1) continue;
+          if (at > idx + 1) at--;
+          ent.push([at, vl]);
+        }
+        if (ent.length){
+          props.push('M  ' + pm[1] + pad3(ent.length, 3) + ent.map(function(e){
+            return pad3(e[0], 4) + pad3(e[1], 4);
+          }).join(''));
+        }
+        continue;
+      }
+      props.push(L);
+    }
+    var counts = pad3(atoms.length, 3) + pad3(nbonds.length, 3) + lines[3].substr(6);
+    return [lines[0], lines[1], lines[2], counts].concat(atoms, nbonds, props).join('\n');
+  }
+
+  function atomSensitivity(smiles, baseLogit){
+    var mol = RDKit.get_mol(smiles);
+    if (!mol || !mol.is_valid()) { if (mol) mol.delete(); return []; }
+    mol.convert_to_kekule_form();
+    var mb = mol.get_molblock(), n = mol.get_num_atoms(), syms = [];
+    try {
+      syms = JSON.parse(mol.get_json()).molecules[0].atoms.map(function(a){
+        return Z2SYM[a.z == null ? 6 : a.z] || ('#' + a.z);
+      });
+    } catch (e) { syms = []; }
+    mol.delete();
+    var vals = [];
+    for (var i = 0; i < n; i++){
+      var nmb = delAtom(mb, i), v = null;
+      if (nmb){
+        var m2 = RDKit.get_mol(nmb);
+        if (m2 && m2.is_valid() && m2.get_num_atoms() > 0){
+          try { v = baseLogit - runModel(featurize(m2).x).logit; } catch (e2) { v = null; }
+        }
+        if (m2) m2.delete();
+      }
+      vals.push({i:i, sym:syms[i] || '?', d:v});
+    }
+    return vals;
+  }
+
+  /* ---------------- applicability domain ---------------- */
+  function adOf(mol){
+    var qfp = strToBits(mol.get_morgan_fp(JSON.stringify({radius:2, nBits:512})));
+    var sims = REF.map(function(r){ return {r:r, t:tanimoto(qfp, r.bits)}; })
+                  .sort(function(a,b){ return b.t - a.t; });
+    var best = sims[0] ? sims[0].t : 0;
+    return {
+      best: best, sims: sims,
+      label: best >= 0.45 ? '범위 안' : best >= 0.3 ? '경계' : '범위 밖',
+      key:   best >= 0.45 ? 'low'     : best >= 0.3 ? 'mid'  : 'high'
+    };
+  }
+
+  /* ---------------- bioactivation alerts ---------------- */
+  function alertsOf(mol){
+    var out = [];
+    for (var i = 0; i < QALERT.length; i++){
+      var a = QALERT[i], n = 0, atoms = [];
+      for (var j = 0; j < a.q.length; j++){
+        var ms = [];
+        try { ms = JSON.parse(mol.get_substruct_matches(a.q[j])); }
+        catch (e) { ms = []; }
+        if (!ms || !ms.length) continue;
+        n += ms.length;
+        for (var k = 0; k < ms.length; k++){
+          var at = ms[k] && ms[k].atoms;
+          if (at) for (var m = 0; m < at.length; m++)
+            if (atoms.indexOf(at[m]) < 0) atoms.push(at[m]);
+        }
+      }
+      if (n) out.push({a:a.meta, n:n, atoms:atoms});
+    }
+    var rank = {strong:0, moderate:1, common:2};
+    out.sort(function(x, y){ return rank[x.a.tier] - rank[y.a.tier]; });
+    return out;
+  }
+  function alertCounts(list){
+    var c = {strong:0, moderate:0, common:0};
+    list.forEach(function(h){ c[h.a.tier]++; });
+    return c;
+  }
+
+  /* ---------------- exposure ---------------- */
+  function exposureOf(dose, desc, logpIn){
+    var clogp = Number(desc[DESC_KEYS[1]]);
+    var mw    = Number(desc[DESC_KEYS[0]]);
+    var measured = (logpIn != null && isFinite(logpIn)) ? Number(logpIn) : null;
+    // the rule was derived on octanol-water logP, so a measured value wins when given
+    var logp = measured == null ? clogp : measured;
+    if (dose == null || !isFinite(dose) || dose <= 0)
+      return {known:false, idx:null, clogp:clogp, measured:measured, logp:logp, mw:mw};
+    var bands = CTX.exposure.dose_bands, idx = bands.length - 1;
+    for (var i = 0; i < bands.length; i++){
+      if (bands[i].max == null || dose < bands[i].max) { idx = i; break; }
+    }
+    var ro2cfg = CTX.exposure.rule_of_two;
+    // flag the cases where the Crippen estimate alone decides the rule
+    var near = Math.abs(logp - ro2cfg.logp) < 1.0;
+    return {
+      known: true, dose: dose, idx: idx, band: bands[idx],
+      logp: logp, clogp: clogp, measured: measured, mw: mw,
+      molar: mw > 0 ? dose / mw : null,
+      ro2: dose >= ro2cfg.dose_mg && logp >= ro2cfg.logp,
+      logp_soft: measured == null && dose >= ro2cfg.dose_mg && near
+    };
+  }
+  function priorityOf(ti, exp){
+    if (!exp.known) return null;
+    var p = PRIORITY[ti][exp.idx];
+    if (exp.ro2) p = Math.min(3, p + 1);
+    return p;
+  }
+  function freqBand(p){
+    var b = CTX.score_bins;
+    for (var i = 0; i < b.length; i++) if (p >= b[i].lo && p < (b[i].hi >= 1 ? 1.01 : b[i].hi)) return b[i];
+    return b[b.length - 1];
+  }
+  function exposureRef(en){
+    if (!en) return null;
+    var refs = CTX.exposure.references, k = String(en).toLowerCase();
+    for (var i = 0; i < refs.length; i++)
+      if (String(refs[i].match).toLowerCase() === k) return refs[i];
+    return null;
+  }
+  function cypNotes(en){
+    if (!en) return [];
+    var k = String(en).toLowerCase();
+    return CTX.cyp_notes.filter(function(c){
+      return c.match.some(function(m){ return String(m).toLowerCase() === k; });
+    });
+  }
+
+  /* ---------------- resolve input ---------------- */
+  // Canonical SMILES, or null when the input is not a readable structure.
+  function canonical(s){
+    var mol = null, out = null;
+    try { mol = RDKit.get_mol(s); } catch (e) { return null; }
+    if (mol) { if (mol.is_valid()) out = mol.get_smiles(); mol.delete(); }
+    return out;
+  }
+
+  // Strip salt counter-ions and solvents: keep only the largest covalent
+  // fragment. In SMILES, '.' separates disconnected components and never appears
+  // inside a bracket atom or ring-closure digit, so splitting on '.' is safe.
+  function largestFragment(smiles){
+    var s = String(smiles == null ? '' : smiles);
+    if (s.indexOf('.') < 0) return {smiles:s, stripped:false, removed:0};
+    var parts = s.split('.'), best = null, bestN = -1, kept = 0;
+    for (var i = 0; i < parts.length; i++){
+      var p = parts[i]; if (!p) continue; kept++;
+      var m = null, n = -1;
+      try { m = RDKit.get_mol(p); } catch (e) { m = null; }
+      if (m){ if (m.is_valid()) n = m.get_num_atoms(); m.delete(); }
+      if (n > bestN){ bestN = n; best = p; }
+    }
+    if (best == null || kept < 2) return {smiles:s, stripped:false, removed:0};
+    return {smiles:best, stripped:true, removed:kept - 1};
+  }
+
+  // A drawn structure never matches a demo SMILES string byte for byte, so the demo
+  // panel is indexed by canonical SMILES as well. 23 entries, built on first need.
+  var demoIndex = null;
+  function demoByStructure(canon){
+    if (!canon) return null;
+    if (!demoIndex) {
+      demoIndex = {};
+      DATA.demo.forEach(function(d){
+        var c = canonical(d.s);
+        if (c && !(c in demoIndex)) demoIndex[c] = d;
+      });
+    }
+    return demoIndex[canon] || null;
+  }
+
+  function resolve(text){
+    var q = String(text == null ? '' : text).trim();
+    if (!q) return null;
+    var mol = RDKit.get_mol(q);
+    if (mol && mol.is_valid()) {
+      var lf = largestFragment(q), useSmi = q, salt = null;
+      if (lf.stripped) {
+        var mm = RDKit.get_mol(lf.smiles);
+        if (mm && mm.is_valid()) { mol.delete(); mol = mm; useSmi = lf.smiles; salt = lf; }
+        else if (mm) mm.delete();
+      }
+      var hit = DATA.demo.filter(function(d){ return d.s === useSmi || d.s === q; })[0];
+      if (!hit) {
+        var c = null;
+        try { c = mol.get_smiles(); } catch (e) { c = null; }
+        hit = demoByStructure(c);
+      }
+      return {mol:mol, label:hit ? hit.ko : null, en:hit ? hit.en : null,
+              note:hit ? hit.note : '', matched:!!hit,
+              sub:hit ? hit.src : 'SMILES 직접 입력', smiles:useSmi, desalted:salt};
+    }
+    if (mol) mol.delete();
+    var k = q.toLowerCase();
+    var byName = DATA.demo.filter(function(d){
+      return d.ko === q || d.en.toLowerCase() === k || d.en.toLowerCase().indexOf(k) === 0;
+    })[0];
+    if (!byName) {
+      var r = REF.filter(function(d){ return d.n.toLowerCase() === k; })[0]
+           || REF.filter(function(d){ return d.n.toLowerCase().indexOf(k) === 0; })[0];
+      if (r) byName = {ko:r.n, en:r.n, s:r.s, src:'FDA DILIrank 등재 의약품'};
+    }
+    if (!byName) return null;
+    var lf2 = largestFragment(byName.s);
+    var m2 = RDKit.get_mol(lf2.smiles);
+    return {mol:m2, label:byName.ko, en:byName.en, note:byName.note || '',
+            sub:byName.src, smiles:lf2.smiles, matched:true,
+            desalted:lf2.stripped ? lf2 : null};
+  }
+
+  /* ---------------- score one compound end to end ---------------- */
+  function score(text, dose, logpIn, sourceLabel){
+    var res = resolve(text);
+    if (!res || !res.mol || !res.mol.is_valid()){
+      if (res && res.mol) res.mol.delete();
+      return null;
+    }
+    var f = featurize(res.mol);
+    var out = runModel(f.x);
+    var ad = adOf(res.mol);
+    var al = alertsOf(res.mol);
+    var exp = exposureOf(dose, f.desc, logpIn);
+    var ti = tierIdx(out.p);
+    var below = REF.filter(function(r){ return r.p < out.p; }).length;
+    return {
+      query:text, label:res.label || '입력 분자', en:res.en, note:res.note,
+      sub:(sourceLabel && !res.matched) ? sourceLabel : res.sub,
+      smiles:res.smiles, mol:res.mol, desc:f.desc, out:out, tier:TIERS[ti], ti:ti,
+      desalted:res.desalted,
+      ad:ad, alerts:al, counts:alertCounts(al), exp:exp,
+      prio:priorityOf(ti, exp), band:freqBand(out.p),
+      pct:Math.round(below / REF.length * 100),
+      expref:exposureRef(res.en), cyp:cypNotes(res.en)
+    };
+  }
+
+  /* ---------------- charts ---------------- */
+  function histogram(queryP){
+    var W = 100, H = 30, NB = 28, i;
+    var pos = new Array(NB).fill(0), neg = new Array(NB).fill(0);
+    REF.forEach(function(r){
+      var b = Math.min(NB-1, Math.floor(r.p * NB));
+      if (r.y === 1) pos[b]++; else neg[b]++;
+    });
+    var max = 0;
+    for (i = 0; i < NB; i++) max = Math.max(max, pos[i] + neg[i]);
+    var bw = W / NB, svg = '';
+    for (i = 0; i < NB; i++){
+      var x = i * bw + 0.35;
+      var hp = (pos[i] / max) * (H - 6), hn = (neg[i] / max) * (H - 6);
+      if (hn > 0) svg += '<rect x="'+x.toFixed(2)+'" y="'+(H-4-hn).toFixed(2)+'" width="'+(bw-0.7).toFixed(2)+'" height="'+hn.toFixed(2)+'" fill="var(--low)" opacity=".8"/>';
+      if (hp > 0) svg += '<rect x="'+x.toFixed(2)+'" y="'+(H-4-hn-hp).toFixed(2)+'" width="'+(bw-0.7).toFixed(2)+'" height="'+hp.toFixed(2)+'" fill="var(--high)" opacity=".8"/>';
+    }
+    svg += '<line x1="0" y1="'+(H-4)+'" x2="'+W+'" y2="'+(H-4)+'" stroke="var(--line)" stroke-width=".4"/>';
+    var qx = Math.max(0.5, Math.min(W-0.5, queryP * W));
+    svg += '<line x1="'+qx.toFixed(2)+'" y1="1" x2="'+qx.toFixed(2)+'" y2="'+(H-2)+'" stroke="var(--fg)" stroke-width=".9"/>';
+    svg += '<circle cx="'+qx.toFixed(2)+'" cy="1.6" r="1.6" fill="var(--fg)"/>';
+    var ticks = '';
+    [0,0.35,0.65,1].forEach(function(t){
+      ticks += '<text x="'+(t*W).toFixed(1)+'" y="'+(H-0.2)+'" font-size="2.4" fill="var(--fg-faint)" text-anchor="'+(t===0?'start':t===1?'end':'middle')+'">'+t.toFixed(2)+'</text>';
+    });
+    $('hist').innerHTML = '<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;height:auto;max-width:100%" role="img" aria-label="학습셋 점수 분포">'+svg+ticks+'</svg>';
+  }
+
+  function drawStruct(mol, atoms){
+    var el = $('paper');
+    if (atoms && atoms.length){
+      try {
+        el.innerHTML = mol.get_svg_with_highlights(JSON.stringify({
+          width:330, height:230, atoms:atoms,
+          highlightColour:[0.85, 0.30, 0.25]
+        }));
+        return true;
+      } catch (e) { /* fall through to the plain drawing */ }
+    }
+    el.innerHTML = mol.get_svg(330, 230);
+    return false;
+  }
+
+  /* ---------------- render: exposure ---------------- */
+  function expBody(rec){
+    var cfg = CTX.exposure, bands = cfg.dose_bands, html = '';
+    var ro2 = cfg.rule_of_two;
+
+    if (!rec.exp.known){
+      html += '<div class="banner" style="--tone:var(--fg-faint)"><b>노출 정보가 없습니다</b>' +
+        '1일 섭취량을 입력하면 노출 축이 함께 평가됩니다. 구조 점수만으로는 ' +
+        '아세트아미노펜처럼 <strong>용량 의존적 내인성 독성</strong>을 가진 성분을 놓칩니다.</div>';
+    } else {
+      var p = rec.prio;
+      html += '<div class="banner" style="--tone:var(--' + (p >= 2 ? 'high' : p === 1 ? 'mid' : 'low') + ')">' +
+        '<b>스크리닝 우선순위 — ' + PRIO[p].ko + '</b>' +
+        '구조 점수 <strong>' + rec.tier.ko + '</strong> × 노출 <strong>' + rec.exp.band.ko + '</strong>' +
+        (rec.exp.ro2 ? ' · <strong>Rule of Two 양성</strong>으로 한 단계 올림' : '') +
+        '. ' + PRIO[p].act + '</div>';
+    }
+
+    // the 3 x 4 rule table, with the current cell marked
+    html += '<div class="matrix">';
+    html += '<div class="hd"></div>';
+    bands.forEach(function(b){ html += '<div class="hd">' + esc(b.ko) + '</div>'; });
+    for (var t = 2; t >= 0; t--){
+      html += '<div class="rh">' + TIERS[t].ko + '</div>';
+      for (var e = 0; e < bands.length; e++){
+        var v = PRIORITY[t][e];
+        var here = rec.exp.known && t === rec.ti && e === rec.exp.idx;
+        html += '<div class="c p' + v + (here ? ' here' : '') + '">' + PRIO[v].ko + '</div>';
+      }
+    }
+    html += '</div>';
+    html += '<div class="matrix-cap"><span>← 1일 섭취량 →</span><span>↑ 구조 위험 점수 ↑</span></div>';
+
+    html += '<p class="note" style="margin-top:12px">두 축은 <strong>따로 계산됩니다.</strong> ' +
+      '섭취량을 넣어도 구조 점수는 바뀌지 않습니다. 모델은 구조만 보고 학습했고, 용량은 그 위에 ' +
+      '규칙으로 얹은 별도 축입니다. 표의 칸 값은 모델 출력이 아니라 아래 두 문헌에서 가져온 ' +
+      '규칙표입니다.</p>';
+
+    if (rec.exp.known){
+      var e = rec.exp;
+      var rows = [
+        ['1일 섭취량', e.dose.toLocaleString() + ' mg/일'],
+        ['몰 기준 섭취량', e.molar == null ? '—' : e.molar.toFixed(3) + ' mmol/일'],
+        ['logP — Crippen 추정값', e.clogp.toFixed(2) +
+          (e.measured == null ? ' <span style="color:var(--fg-faint)">(판정에 사용)</span>' : '')],
+        ['logP — 입력한 측정값', e.measured == null
+          ? '<span style="color:var(--fg-faint)">미입력</span>'
+          : e.measured.toFixed(2) + ' <strong>(판정에 사용)</strong>'],
+        ['Rule of Two', e.ro2
+          ? '<strong style="color:var(--high)">양성</strong> (≥' + ro2.dose_mg + ' mg/일 & logP ≥' + ro2.logp + ')'
+          : '음성 (≥' + ro2.dose_mg + ' mg/일 & logP ≥' + ro2.logp + ' 동시 충족 아님)'],
+        ['용량 구간', e.band.ko + ' — ' + esc(e.band.detail)]
+      ];
+      html += '<div class="scroll" style="margin-top:12px"><table><tbody>' + rows.map(function(r){
+        return '<tr><th style="text-transform:none;letter-spacing:0;font-size:12.5px;color:var(--fg-dim)">' +
+               r[0] + '</th><td>' + r[1] + '</td></tr>';
+      }).join('') + '</tbody></table></div>';
+
+      if (e.logp_soft){
+        html += '<div class="banner" style="--tone:var(--mid); margin-top:12px; margin-bottom:0">' +
+          '<b>이 Rule of Two 판정은 추정 logP가 혼자 결정했습니다</b>' +
+          'Crippen clogP ' + e.clogp.toFixed(2) + '는 계산값이고, 원 논문의 규칙은 ' +
+          '옥탄올–물 분배계수(측정값)로 세워졌습니다. 둘은 1 단위 이상 벌어질 수 있습니다. ' +
+          '예를 들어 펙소페나딘은 Crippen 5.51로 나오지만 양쪽성 이온이라 실제 logD는 훨씬 낮고, ' +
+          '추정값만 보면 규칙을 잘못 통과합니다. 경계(logP ' + ro2.logp + ' ± 1) 근처라면 ' +
+          '<strong>측정 logP를 입력해 다시 판정하십시오.</strong></div>';
+      }
+    }
+
+    if (rec.expref){
+      html += '<div class="banner" style="--tone:var(--accent); margin-top:14px; margin-bottom:0">' +
+        '<b>공표된 섭취 권고 — ' + esc(rec.expref.ko) + ' ' + rec.expref.mg_per_day.toLocaleString() + ' mg/일</b>' +
+        esc(rec.expref.basis) +
+        (rec.exp.known
+          ? ' <strong>입력값 ' + rec.exp.dose.toLocaleString() + ' mg/일은 이 기준의 ' +
+            Math.round(rec.exp.dose / rec.expref.mg_per_day * 100) + '% 입니다.</strong>'
+          : '') +
+        '<br><span style="font-size:11.5px;color:var(--fg-faint)">출처: ' + esc(rec.expref.source) + '</span></div>';
+    }
+
+    html += '<details><summary>이 축의 근거 문헌</summary>' +
+      '<p class="note"><strong>' + esc(ro2.label) + '</strong> — ' + esc(ro2.detail) +
+      '<br><span style="font-size:11.5px;color:var(--fg-faint)">' + esc(ro2.source) +
+      ' · <a href="https://doi.org/' + esc(ro2.doi) + '">DOI</a></span></p>' +
+      '<p class="note"><strong>용량 구간</strong> — 경구약의 1일 용량과 특이체질 DILI 사이의 관계를 ' +
+      '미국 처방 데이터베이스와 스웨덴 부작용 보고 598건으로 분석한 결과입니다.' +
+      '<br><span style="font-size:11.5px;color:var(--fg-faint)">' + esc(CTX.exposure.dose_band_source.source) +
+      ' · <a href="https://doi.org/' + esc(CTX.exposure.dose_band_source.doi) + '">DOI</a></span></p>' +
+      '</details>';
+    return html;
+  }
+
+  /* ---------------- render: observed frequency ---------------- */
+  function freqBody(rec){
+    var meta = CTX.score_bins_meta, b = rec.band;
+    var html = '';
+    if (b.n >= 20){
+      html += '<div class="banner" style="--tone:var(--' + rec.tier.key + ')">' +
+        '<b>' + esc(b.tier) + ' 구간(' + b.lo.toFixed(2) + '–' + b.hi.toFixed(2) + ')의 관측 양성률 ' +
+        (b.rate * 100).toFixed(0) + '%</b>' +
+        '모델이 학습에 쓰지 않은 ' + b.n + '종 중 ' + b.pos + '종이 실제 간독성 양성이었습니다 ' +
+        '(95% 신뢰구간 ' + (b.ci_lo*100).toFixed(0) + '–' + (b.ci_hi*100).toFixed(0) + '%).</div>';
+    } else {
+      html += '<div class="banner" style="--tone:var(--mid)">' +
+        '<b>이 구간은 표본이 ' + b.n + '종뿐입니다</b>' +
+        '관측 양성률 ' + (b.rate * 100).toFixed(0) + '% (95% 신뢰구간 ' +
+        (b.ci_lo*100).toFixed(0) + '–' + (b.ci_hi*100).toFixed(0) + '%)인데, 구간이 이렇게 넓으면 ' +
+        '사실상 아무것도 말해주지 않습니다. 중간 점수대는 판단을 보류하고 실험으로 넘기는 것이 맞습니다.</div>';
+    }
+    html += '<div class="scroll"><table><thead><tr>' +
+      '<th>점수 구간</th><th>등급</th><th>held-out 종수</th><th>실제 양성</th>' +
+      '<th>관측 양성률</th><th>95% 신뢰구간</th></tr></thead><tbody>' +
+      CTX.score_bins.map(function(x){
+        var on = x === b;
+        return '<tr' + (on ? ' class="sel"' : '') + '>' +
+          '<td class="num">' + x.lo.toFixed(2) + '–' + x.hi.toFixed(2) + '</td>' +
+          '<td>' + esc(x.tier) + (on ? ' <strong>← 이 분자</strong>' : '') + '</td>' +
+          '<td class="num">' + x.n + '</td><td class="num">' + x.pos + '</td>' +
+          '<td class="num">' + (x.rate == null ? '—' : (x.rate*100).toFixed(1) + '%') + '</td>' +
+          '<td class="num">' + (x.ci_lo*100).toFixed(0) + '–' + (x.ci_hi*100).toFixed(0) + '%</td></tr>';
+      }).join('') + '</tbody></table></div>';
+    html += '<p class="note" style="margin-top:11px"><strong>이것은 보정된 확률이 아닙니다.</strong> ' +
+      esc(meta.note) + ' 전체 ' + meta.n + '종의 양성률은 ' + (meta.base_rate*100).toFixed(0) + '% 입니다. ' +
+      '71종짜리 hold-out으로는 확률 보정이 성립하지 않아(isotonic은 계단으로 뭉개지고 Platt은 ' +
+      '0.31–0.86으로 압축됨) 점수를 확률로 환산하지 않고, 대신 관측된 빈도를 그대로 싣습니다. ' +
+      '구간이 넓다는 사실 자체가 정보입니다.</p>';
+    return html;
+  }
+
+  /* ---------------- render: alerts ---------------- */
+  function alertBody(list, forProduct){
+    var c = alertCounts(list), html = '';
+    if (!list.length){
+      html += '<div class="banner" style="--tone:var(--low)"><b>해당하는 구조 경보 없음</b>' +
+        '등록된 ' + CTX.alerts.length + '종 패턴 중 걸리는 것이 없습니다. ' +
+        '<strong>안전하다는 뜻은 아닙니다</strong> — 알려진 활성화 경로의 부분구조가 보이지 않는다는 뜻입니다.</div>';
+    } else {
+      var parts = [];
+      if (c.strong)   parts.push('강한 경보 ' + c.strong + '건');
+      if (c.moderate) parts.push('중간 ' + c.moderate + '건');
+      if (c.common)   parts.push('흔한 패턴 ' + c.common + '건');
+      html += '<div class="banner" style="--tone:var(--' + (c.strong ? 'high' : c.moderate ? 'mid' : 'fg-faint') + ')">' +
+        '<b>' + parts.join(' · ') + '</b>' +
+        (forProduct ? '제품에 포함된 성분들에서 ' : '') +
+        'CYP 대사 활성화 경로가 문헌에 보고된 부분구조입니다. ' +
+        '경보가 있다고 독성이 확정되는 것은 아니고, 없다고 안전한 것도 아닙니다.' +
+        (forProduct ? '' : ' 경보를 누르면 해당 원자가 구조식에 표시됩니다.') + '</div>';
+      html += list.map(function(h, i){
+        var a = h.a, tone = a.tier === 'strong' ? '--high' : a.tier === 'moderate' ? '--mid' : '--fg-faint';
+        var stat;
+        if (!a.n_ref){
+          stat = 'DILIrank ' + CTX.alert_n_ref + '종에 해당 구조 0건 — 학습 데이터에 이 화학이 없습니다';
+        } else {
+          stat = 'DILIrank ' + a.n_ref + '종에서 관측 · 그중 간독성 양성 ' +
+                 (a.ref_pos_rate*100).toFixed(0) + '% (' + a.n_ref_pos + '/' + a.n_ref + ') · ' +
+                 '전체 기준선 ' + (CTX.alert_base_rate*100).toFixed(0) + '%';
+        }
+        return '<' + (forProduct ? 'div' : 'button') + ' class="alert-row"' +
+          (forProduct ? '' : ' data-al="' + i + '" type="button"') + '>' +
+          '<span class="dot" style="background:var(' + tone + ')"></span><span>' +
+          '<span class="a-name">' + esc(a.ko) +
+          '<span class="tierpill t-' + a.tier + '">' +
+          (a.tier === 'strong' ? '강함' : a.tier === 'moderate' ? '중간' : '흔함') + '</span>' +
+          (h.n > 1 ? ' <span style="color:var(--fg-faint);font-weight:400;font-size:12px">×' + h.n + '</span>' : '') +
+          (h.where ? ' <span style="color:var(--fg-dim);font-weight:500;font-size:12px">— ' + esc(h.where) + '</span>' : '') +
+          '</span>' +
+          '<span class="a-mech">' + esc(a.mech) + '</span>' +
+          '<span class="a-stat">' + esc(stat) + '</span>' +
+          '</span></' + (forProduct ? 'div' : 'button') + '>';
+      }).join('');
+    }
+    html += '<p class="note" style="margin-top:12px">경보는 <strong>예측이 아니라 문헌 기반 플래그</strong>입니다. ' +
+      'SMARTS 부분구조 탐지로만 동작하며, 모체 화합물의 구조에서 알려진 CYP 활성화 경로의 ' +
+      '존재 가능성을 표시합니다. <strong>대사체를 실제로 생성해 평가하는 것은 아닙니다</strong> — ' +
+      '그건 대사체 예측 도구와 실측 데이터가 있어야 가능합니다. ' +
+      '오른쪽 수치는 이 경보가 FDA DILIrank 등재 의약품에서 얼마나 흔하고 실제 간독성과 ' +
+      '얼마나 같이 나타나는지를 보여주며, 기준선보다 낮은 경보는 그 자체로 위험 신호가 아닙니다.</p>';
+    return html;
+  }
+
+  /* ---------------- render: single ---------------- */
+  function renderSingle(rec){
+    LAST = rec;
+    var out = rec.out, tier = rec.tier;
+
+    $('verdict').style.setProperty('--tier', 'var('+tier.v+')');
+    $('verdict').style.setProperty('--tier-soft', 'var('+tier.v+'-soft)');
+    $('tier').querySelector('span').textContent = '간독성 위험 ' + tier.ko;
+    $('qname').textContent = rec.label;
+    $('qsub').textContent = (rec.prio != null ? PRIO[rec.prio].ko + ' · ' : '') + tier.act + ' · ' + rec.sub;
+    $('prob').innerHTML = (out.p * 100).toFixed(0) + '<span style="font-size:17px;font-weight:600"> / 100</span>';
+    $('ci').textContent = '앙상블 범위 ' + (out.lo*100).toFixed(0) + '–' + (out.hi*100).toFixed(0);
+    $('qnote').hidden = !rec.note;
+    $('qnote').textContent = rec.note || '';
+
+    $('t-prob').textContent = out.p.toFixed(3);
+    $('t-ci').textContent = '±' + ((out.hi - out.lo) / 2 * 100).toFixed(1);
+    $('t-ad').textContent = rec.ad.label;
+    $('t-ad').style.color = 'var(--' + rec.ad.key + ')';
+    $('t-ad-n').textContent = '최근접 Tanimoto ' + rec.ad.best.toFixed(2);
+    $('t-pct').textContent = rec.pct + '%';
+    $('t-pct-n').textContent = 'DILIrank ' + REF.length + '종 기준';
+    $('t-dose').textContent = rec.exp.known ? rec.exp.dose.toLocaleString() : '—';
+    $('t-dose-n').textContent = rec.exp.known ? 'mg/일 · ' + (rec.exp.molar || 0).toFixed(3) + ' mmol/일' : '입력하지 않음';
+    $('t-exp').textContent = rec.exp.known ? rec.exp.band.ko : '—';
+    $('t-exp').style.color = rec.exp.known
+      ? 'var(--' + (rec.exp.idx >= 2 ? 'high' : rec.exp.idx === 1 ? 'mid' : 'low') + ')' : '';
+    $('t-exp-n').textContent = rec.exp.known
+      ? (rec.exp.ro2 ? 'Rule of Two 양성' : 'Rule of Two 음성') : '섭취량 필요';
+
+    // applicability-domain banner, stated per compound
+    var ab = $('adbanner');
+    if (rec.ad.best < 0.3){
+      ab.hidden = false;
+      ab.style.setProperty('--tone', 'var(--high)');
+      ab.style.setProperty('--tone-soft', 'var(--high-soft)');
+      ab.innerHTML = '<b>이 점수는 외삽입니다 — 적용 범위 밖 (최근접 Tanimoto ' +
+        rec.ad.best.toFixed(2) + ')</b>' +
+        '학습 데이터(FDA DILIrank ' + DATA.n_train + '종)는 모두 의약품이고, 이 분자와 구조적으로 ' +
+        '충분히 가까운 화합물이 그 안에 없습니다. 천연물에서는 대부분 이렇게 나옵니다. ' +
+        '<strong>점수를 단독 근거로 쓰면 안 되고</strong>, 아래 구조 경보와 실측 실험을 같이 보셔야 합니다. ' +
+        '이 간극은 모델 조정으로 메울 수 없고 천연물 간독성 실측 데이터로만 메워집니다.';
+    } else if (rec.ad.best < 0.45){
+      ab.hidden = false;
+      ab.style.setProperty('--tone', 'var(--mid)');
+      ab.style.setProperty('--tone-soft', 'var(--mid-soft)');
+      ab.innerHTML = '<b>적용 범위 경계 (최근접 Tanimoto ' + rec.ad.best.toFixed(2) + ')</b>' +
+        '학습 공간의 가장자리입니다. 참고용으로 읽고 실험 확인을 권합니다.';
+    } else {
+      ab.hidden = true;
+    }
+
+    var sw = $('saltwarn');
+    if (rec.desalted){
+      sw.hidden = false;
+      sw.style.setProperty('--tone', 'var(--mid)');
+      sw.style.setProperty('--tone-soft', 'var(--mid-soft)');
+      sw.innerHTML = '<b>염 · 혼합물이 감지되어 본체만 평가했습니다</b>' +
+        '입력에 조각이 ' + (rec.desalted.removed + 1) + '개 있었습니다. 반대이온 · 용매 등 작은 조각을 빼고 ' +
+        '가장 큰 조각(활성 본체)만으로 점수와 노출 축(분자량 환산 포함)을 계산했습니다. ' +
+        '평가에 쓴 구조: <code>' + esc(rec.smiles) + '</code>';
+    } else {
+      sw.hidden = true;
+    }
+
+    drawStruct(rec.mol, null);
+    $('hl-tag').textContent = '';
+
+    $('nnwarn').hidden = rec.ad.best >= 0.3;
+    $('nnwarn').textContent = rec.ad.best >= 0.3 ? '' :
+      '구조적으로 충분히 가까운 등재 의약품이 없습니다 (최대 유사도 ' + rec.ad.best.toFixed(2) +
+      '). 아래 목록은 "가장 가까운" 것일 뿐 비교 근거로는 약합니다.';
+
+    $('nn').innerHTML = rec.ad.sims.slice(0, 6).map(function(s){
+      var r = s.r;
+      return '<tr><td>' + esc(r.n) + '</td>' +
+             '<td class="num">' + s.t.toFixed(2) + '</td>' +
+             '<td><span class="pill ' + (r.y ? 'p1' : 'p0') + '">' + esc(r.c) + '</span></td>' +
+             '<td class="num">' + (r.sev == null ? '—' : r.sev) + '</td>' +
+             '<td class="num">' + (r.lt || '—') + '</td>' +
+             '<td class="note">' + esc(r.mech || '—') + '</td></tr>';
+    }).join('');
+
+    $('desc').innerHTML = DESC_KEYS.map(function(k){
+      var v = Number(rec.desc[k]);
+      return '<tr><th style="text-transform:none;letter-spacing:0;font-size:12.5px;color:var(--fg-dim)">' +
+             DESC_LABEL[k] + '</th><td class="num">' +
+             (Math.abs(v) >= 100 ? v.toFixed(1) : v.toFixed(3)) + '</td></tr>';
+    }).join('');
+
+    $('expbody').innerHTML   = expBody(rec);
+    $('freqbody').innerHTML  = freqBody(rec);
+    $('alertbody').innerHTML = alertBody(rec.alerts, false);
+
+    renderEvidence(rec);
+    histogram(out.p);
+    $('result').hidden = false;
+    $('mresult').hidden = true;
+    $('card-struct').hidden = false;
+    printMeta(rec.label + (rec.exp.known ? ' · ' + rec.exp.dose.toLocaleString() + ' mg/일' : ''));
+    histPush({mode:'단일', label:rec.label, smiles:rec.smiles,
+              dose:rec.exp.known ? rec.exp.dose : null, logp:rec.exp.measured,
+              p:out.p, tier:tier.ko, ad:rec.ad.label});
+  }
+
+  /* ---------------- render: evidence view ---------------- */
+  function sgn(v, digits){ return (v >= 0 ? '+' : '\u2212') + Math.abs(v).toFixed(digits == null ? 3 : digits); }
+
+  function renderEvidence(rec){
+    var out = rec.out;
+    var terms = [
+      {lab:'기준값 (절편)',  v:out.intercept},
+      {lab:'구조 지문 기여', v:out.fpPart},
+      {lab:'물성 기여',      v:out.descPart}
+    ];
+    var scale = Math.max.apply(null, terms.map(function(t){ return Math.abs(t.v); })
+                                          .concat([Math.abs(out.logit), 1]));
+    function dvBar(v, h){
+      var w = Math.abs(v) / scale * 50;
+      return '<span class="dv"' + (h ? ' style="height:' + h + 'px"' : '') + '><i class="' +
+        (v >= 0 ? 'up' : 'dn') + '" style="' +
+        (v >= 0 ? 'left:50%; width:' + w.toFixed(1) + '%' : 'right:50%; width:' + w.toFixed(1) + '%') +
+        '"></i></span>';
+    }
+    $('wf').innerHTML = terms.map(function(t){
+      return '<div class="wf-row"><span class="lab">' + t.lab + '</span>' + dvBar(t.v) +
+             '<span class="amt">' + sgn(t.v) + '</span></div>';
+    }).join('') +
+      '<div class="wf-row total"><span class="lab">내부 점수 (로짓)</span>' + dvBar(out.logit) +
+      '<span class="amt">' + sgn(out.logit) + '</span></div>';
+
+    var sum = out.intercept + out.fpPart + out.descPart;
+    $('sigmap').innerHTML =
+      '<p class="note">세 항의 합 <span class="mono">' + sum.toFixed(6) + '</span> = 내부 점수 <span class="mono">' +
+      out.logit.toFixed(6) + '</span></p>' +
+      '<p class="note">내부 점수를 시그모이드 함수에 넣으면 0~1로 압축되고, 100을 곱한 것이 <strong>위험 점수 ' +
+      (out.p*100).toFixed(0) + '점</strong>입니다. 화면의 점수는 5개 모델을 각각 변환한 뒤 평균한 값이라, ' +
+      '위의 평균 로짓 하나를 변환한 값과는 조금 다릅니다.</p>';
+
+    var satur = out.logits.filter(function(L){ return Math.abs(L) > 5; }).length;
+    $('satnote').hidden = satur < 3;
+    if (satur >= 3){
+      $('satnote').innerHTML = '<strong>이 성분은 점수가 양 끝에 붙어 있습니다.</strong> 내부 점수의 절댓값이 5를 넘으면 ' +
+        '시그모이드가 포화되어 0점 또는 100점으로 수렴합니다. 그래서 <strong>100점끼리, 0점끼리는 서로 서열을 비교할 수 없습니다.</strong> ' +
+        '이럴 때는 위의 내부 점수 값과 유사 화합물을 함께 보고 판단해야 합니다. 저희가 이 수치를 확률이라고 부르지 않는 이유 중 하나입니다.';
+    }
+
+    var dcs = DESC_KEYS.map(function(k, i){
+      return {k:k, v:Number(rec.desc[k]), z:out.z[2048+i], c:out.descContrib[i]};
+    }).sort(function(x, y){ return Math.abs(y.c) - Math.abs(x.c); });
+    var dmax = Math.max.apply(null, dcs.map(function(d){ return Math.abs(d.c); }).concat([1e-6]));
+    $('desctab').innerHTML = dcs.map(function(d){
+      var w = Math.abs(d.c) / dmax * 50;
+      return '<tr><th style="text-transform:none;letter-spacing:0;font-size:12.5px;color:var(--fg-dim);font-weight:500">' +
+        DESC_LABEL[d.k] + '</th>' +
+        '<td class="num">' + (Math.abs(d.v) >= 100 ? d.v.toFixed(1) : d.v.toFixed(3)) + '</td>' +
+        '<td class="num" style="color:' + (Math.abs(d.z) > 2 ? 'var(--mid)' : 'var(--fg-dim)') + '">' + sgn(d.z, 2) + '</td>' +
+        '<td class="num">' + sgn(d.c, 4) + '</td>' +
+        '<td style="width:116px">' + dvBarD(d.c, dmax) + '</td></tr>';
+    }).join('');
+
+    $('members').innerHTML = out.probs.map(function(p, i){
+      return '<div class="mrow"><span class="ml">모델 ' + (i+1) + '</span>' +
+        '<span class="mbar"><i style="width:' + (p*100).toFixed(1) + '%"></i>' +
+        '<u style="left:' + (out.p*100).toFixed(1) + '%"></u></span>' +
+        '<span class="num" style="text-align:right">' + (p*100).toFixed(0) + '</span></div>';
+    }).join('');
+    var sdp = out.sd * 100;
+    $('spread').innerHTML = '5개 모델의 표준편차는 <strong>' + sdp.toFixed(1) + '점</strong>입니다. ' +
+      (sdp < 5 ? '서로 거의 같은 답을 냈습니다. 학습 데이터에 비슷한 구조가 충분히 있다는 뜻이기도 합니다.'
+       : sdp < 15 ? '통상 범위의 불일치입니다.'
+       : '불일치가 큽니다. 부트스트랩 표본이 조금만 달라져도 판단이 흔들리는 경계 영역이라는 뜻이므로, 점수 하나만 보고 결정하면 안 됩니다.') +
+      ' 세로선은 5개의 평균, 곧 화면에 표시되는 위험 점수입니다.' +
+      ' 다만 저희 측정에서는 이 산포가 실제 오차 크기를 추적하지 못했으므로(ECE 0.131), 폭을 신뢰도로 읽지 마십시오.';
+
+    $('limits').innerHTML =
+      '<p class="note">· <strong>확률로 읽으면 안 됩니다.</strong> 70점이 “70% 확률로 간독성”이라는 뜻이 아닙니다. 보유한 hold-out이 71종뿐이라 ' +
+        '절대 확률로 보정하기에는 표본이 부족하다고 판단했고, isotonic·Platt 보정을 모두 시도했지만 순위 정보가 오히려 훼손되어 채택하지 않았습니다.</p>' +
+      '<p class="note">· <strong>천연물은 단일 성분이 아닙니다.</strong> 추출물은 수십~수백 성분의 혼합이고 성분 간 상호작용과 대사 활성화가 있습니다. ' +
+        '이 모델은 단일 성분 하나의 구조를 평가합니다.</p>' +
+      '<p class="note">· <strong>라벨 자체에 보고 편향이 있습니다.</strong> DILIrank는 FDA가 의약품 라벨과 문헌을 근거로 분류한 것이라, ' +
+        '많이 처방된 약일수록 간손상 보고가 쌓여 양성으로 분류되기 쉽습니다.</p>' +
+      '<p class="note">· <strong>적용 범위 밖이면 점수를 신뢰하지 마십시오.</strong> 학습 데이터는 의약품이고 천연물은 골격이 다른 경우가 많습니다. ' +
+        '최근접 Tanimoto가 0.3 미만이면 사실상 외삽입니다.</p>' +
+      '<p class="note">· <strong>구조 민감도는 기전이 아닙니다.</strong> 모델이 어디를 보고 있는지를 보여줄 뿐, 그 자리가 실제 독성 원인이라는 근거가 아닙니다.</p>';
+
+    $('heatpaper').innerHTML = '<span class="ph">원자별 민감도 계산 중…</span>';
+    $('atomtab').innerHTML = '';
+    var smi = rec.smiles, base = out.logit;
+    setTimeout(function(){
+      var sens = atomSensitivity(smi, base);
+      if (LAST && LAST.smiles === smi) paintAtomMap(smi, sens);
+    }, 30);
+  }
+
+  function dvBarD(v, dmax){
+    var w = Math.abs(v) / dmax * 50;
+    return '<span class="dv" style="height:12px"><i class="' + (v >= 0 ? 'up' : 'dn') + '" style="' +
+      (v >= 0 ? 'left:50%; width:' + w.toFixed(1) + '%' : 'right:50%; width:' + w.toFixed(1) + '%') + '"></i></span>';
+  }
+
+  function paintAtomMap(smiles, sens){
+    var ok = (sens || []).filter(function(x){ return x.d != null; });
+    if (!ok.length){
+      $('heatpaper').innerHTML = '<span class="ph">이 구조에서는 민감도를 계산할 수 없었습니다</span>';
+      return;
+    }
+    var amax = Math.max.apply(null, ok.map(function(x){ return Math.abs(x.d); }).concat([1e-6]));
+    var idxs = [], cols = {};
+    ok.forEach(function(x){
+      var t = x.d / amax;
+      if (Math.abs(t) < 0.12) return;
+      idxs.push(x.i);
+      var m = Math.min(1, Math.abs(t));
+      cols[x.i] = t > 0 ? [1, 1 - 0.62*m, 1 - 0.62*m] : [1 - 0.70*m, 1, 1 - 0.55*m];
+    });
+    var mol = RDKit.get_mol(smiles);
+    if (mol && mol.is_valid()){
+      $('heatpaper').innerHTML = mol.get_svg_with_highlights(JSON.stringify({
+        atoms:idxs, bonds:[], highlightAtomColors:cols,
+        width:280, height:220, addAtomIndices:true
+      }));
+    }
+    if (mol) mol.delete();
+    var top = ok.slice().sort(function(x, y){ return Math.abs(y.d) - Math.abs(x.d); }).slice(0, 8);
+    $('atomtab').innerHTML = top.map(function(x){
+      return '<tr><td class="num">' + esc(x.sym) + ' <span style="color:var(--fg-faint)">#' + x.i + '</span></td>' +
+        '<td class="num">' + sgn(x.d, 2) + '</td>' +
+        '<td><span class="pill ' + (x.d > 0 ? 'p1' : 'p0') + '">' + (x.d > 0 ? '점수 높임' : '점수 낮춤') + '</span></td></tr>';
+    }).join('') +
+      '<tr><td colspan="3" class="note" style="padding-top:11px">번호는 구조 그림의 원자 번호와 같습니다. ' +
+      '계산한 원자 ' + ok.length + '개 중 영향이 큰 ' + top.length + '개입니다.</td></tr>';
+  }
+
+  function showResultView(which){
+    var ev = which === 'evidence';
+    $('view-verdict').classList.toggle('vhide', ev);
+    $('view-evidence').classList.toggle('vhide', !ev);
+    $('vs-verdict').setAttribute('aria-selected', ev ? 'false' : 'true');
+    $('vs-evidence').setAttribute('aria-selected', ev ? 'true' : 'false');
+  }
+
+  /* ---------------- render: formulation / batch ---------------- */
+  function renderMulti(recs, failed, asProduct){
+    LASTM = {recs:recs, asProduct:asProduct};
+    var total = recs.reduce(function(a, r){ return a + (r.exp.known ? r.exp.dose : 0); }, 0);
+    var anyDose = total > 0;
+
+    // the max-component rule is the headline, because DILI is not additive
+    var top = recs.slice().sort(function(a, b){ return b.out.p - a.out.p; })[0];
+    var weighted = null;
+    if (asProduct && anyDose){
+      weighted = recs.reduce(function(a, r){
+        return a + (r.exp.known ? r.exp.dose / total : 0) * r.out.p;
+      }, 0);
+    }
+    var worstPrio = recs.reduce(function(a, r){
+      return r.prio == null ? a : Math.max(a, r.prio);
+    }, -1);
+
+    var tier = top ? top.tier : TIERS[0];
+    $('mverdict').style.setProperty('--tier', 'var('+tier.v+')');
+    $('mverdict').style.setProperty('--tier-soft', 'var('+tier.v+'-soft)');
+    $('mtier').querySelector('span').textContent = asProduct
+      ? '최고 위험 성분 기준 ' + tier.ko : '배치 ' + recs.length + '종';
+    $('mname').textContent = asProduct
+      ? (top ? top.label + ' 주도' : '—')
+      : recs.length + '종 일괄 평가';
+    $('msub').textContent = asProduct
+      ? (worstPrio >= 0 ? '우선순위 ' + PRIO[worstPrio].ko + ' · ' : '') +
+        '성분 ' + recs.length + '종' + (anyDose ? ' · 총 ' + total.toLocaleString() + ' mg/일' : ' · 섭취량 미입력')
+      : '서로 무관한 후보들을 한 번에 평가했습니다. 조성 가중 요약은 표시하지 않습니다.';
+    $('mprob').innerHTML = top
+      ? (top.out.p * 100).toFixed(0) + '<span style="font-size:17px;font-weight:600"> / 100</span>' : '—';
+    $('mci').textContent = weighted == null ? (asProduct ? '조성비 미입력' : '')
+      : '조성 가중 평균 ' + (weighted * 100).toFixed(0);
+
+    $('mrows').innerHTML = recs.map(function(r){
+      var w = (asProduct && anyDose && r.exp.known) ? r.exp.dose / total : null;
+      var c = r.counts;
+      var al = c.strong ? '<span class="pill high">강 ' + c.strong + '</span>'
+             : c.moderate ? '<span class="pill mid">중 ' + c.moderate + '</span>'
+             : c.common ? '<span class="pill pn">흔 ' + c.common + '</span>'
+             : '<span class="pill pn">—</span>';
+      return '<tr>' +
+        '<td>' + esc(r.label) + '</td>' +
+        '<td class="num">' + (r.exp.known ? r.exp.dose.toLocaleString() : '—') + '</td>' +
+        '<td class="num">' + (w == null ? '—' : (w * 100).toFixed(1) + '%') + '</td>' +
+        '<td class="num">' + r.out.p.toFixed(3) + '</td>' +
+        '<td><span class="pill ' + r.tier.key + '">' + r.tier.ko + '</span></td>' +
+        '<td><span class="pill ' + (r.ad.key === 'low' ? 'low' : r.ad.key === 'mid' ? 'mid' : 'high') + '">' +
+          r.ad.label + '</span><br><span class="note mono" style="font-size:11px">' +
+          r.ad.best.toFixed(2) + '</span></td>' +
+        '<td>' + (r.exp.known ? esc(r.exp.band.ko) + (r.exp.ro2 ? '<br><span class="note" style="font-size:11px;color:var(--high)">RO2 양성</span>' : '') : '—') + '</td>' +
+        '<td>' + (r.prio == null ? '—' : esc(PRIO[r.prio].ko)) + '</td>' +
+        '<td>' + al + '</td></tr>';
+    }).join('');
+
+    $('mfail').hidden = !failed.length;
+    $('mfail').innerHTML = failed.length
+      ? '인식하지 못한 입력 ' + failed.length + '건: <span class="mono">' +
+        failed.map(esc).join(', ') + '</span>' : '';
+
+    // out-of-domain banner for the formulation as a whole
+    var oodn = recs.filter(function(r){ return r.ad.best < 0.3; });
+    var mb = $('mbanner');
+    if (oodn.length){
+      mb.hidden = false;
+      mb.style.setProperty('--tone', 'var(--high)');
+      mb.style.setProperty('--tone-soft', 'var(--high-soft)');
+      mb.innerHTML = '<b>' + oodn.length + '/' + recs.length + ' 성분이 적용 범위 밖입니다</b>' +
+        esc(oodn.map(function(r){ return r.label; }).join(', ')) +
+        ' — 이 성분들의 점수는 외삽이며, 아래 요약도 그만큼 약해집니다. ' +
+        '천연물에서 흔한 상황이고, 모델 조정이 아니라 실측 데이터로만 해결됩니다.';
+    } else {
+      mb.hidden = true;
+    }
+
+    // summary
+    $('mcard-sum').hidden = !asProduct;
+    if (asProduct){
+      var html = '';
+      html += '<div class="tiles">';
+      html += tile('최고 위험 성분', top ? top.label : '—',
+        top ? '점수 ' + top.out.p.toFixed(3) + ' · ' + top.tier.ko : '');
+      html += tile('조성 가중 평균 점수', weighted == null ? '—' : weighted.toFixed(3),
+        weighted == null ? '성분별 mg/일 입력 필요' : '제품 간 상대 비교용 보조 지표');
+      html += tile('총 1일 섭취량', anyDose ? total.toLocaleString() : '—', anyDose ? 'mg/일' : '미입력');
+      html += tile('최고 우선순위', worstPrio >= 0 ? PRIO[worstPrio].ko : '—',
+        worstPrio >= 0 ? '성분별 우선순위의 최댓값' : '섭취량 필요');
+      html += '</div>';
+      html += '<p class="note" style="margin-top:14px"><strong>최고 위험 성분을 1순위 지표로 읽으십시오.</strong> ' +
+        '간독성은 성분 점수의 평균으로 결정되지 않습니다. 한 성분이 문제를 만들면 나머지가 깨끗해도 ' +
+        '제품은 문제를 일으킵니다. 조성 가중 평균을 같이 내는 것은 <strong>같은 계열 제품들을 ' +
+        '서로 줄 세울 때</strong>만 쓸모가 있고, 그 값을 "이 제품의 간독성 확률"로 읽으면 틀립니다.</p>';
+      html += '<p class="note"><strong>Rule of Two 판정은 추정 logP를 씁니다.</strong> ' +
+        '처방 모드에서는 성분별 측정 logP를 받지 않으므로 RDKit Crippen clogP로 판정합니다. ' +
+        '경계에 걸린 성분은 단일 성분 모드에서 측정값을 넣어 다시 확인하십시오.</p>';
+      html += '<p class="note"><strong>성분 간 상호작용은 이 모델이 모릅니다.</strong> ' +
+        '각 성분을 따로 채점한 뒤 합쳐 보여주는 것이고, 대사 경쟁·CYP 억제·유도로 노출이 달라지는 ' +
+        '부분은 아래 CYP 메모에 문헌 수준으로만 표시합니다. 추출물의 미확인 성분, 배치 간 함량 편차, ' +
+        '잔류 용매는 전혀 반영되지 않습니다.</p>';
+      $('msum').innerHTML = html;
+    }
+
+    // CYP notes: curated literature + mechanism-based-inhibition substructures
+    var cyp = [], seen = {};
+    recs.forEach(function(r){
+      r.cyp.forEach(function(c){
+        if (seen['c' + c.ko]) return;
+        seen['c' + c.ko] = 1;
+        cyp.push({who:r.label, title:c.ko + ' — ' + c.effect, ev:c.evidence, note:c.note});
+      });
+      r.alerts.forEach(function(h){
+        if (['benzodioxole','furanocoumarin','terminal_alkyne'].indexOf(h.a.key) < 0) return;
+        var id = 's' + r.label + h.a.key;
+        if (seen[id]) return;
+        seen[id] = 1;
+        cyp.push({who:r.label, title:h.a.ko + ' — CYP 기계기반 억제 가능 구조',
+                  ev:'구조 경보', note:h.a.mech});
+      });
+    });
+    $('mcard-cyp').hidden = !cyp.length;
+    if (cyp.length){
+      $('mcyp').innerHTML =
+        '<p class="note" style="margin-bottom:12px">같은 제품에 들어 있는 성분이 다른 성분의 대사를 ' +
+        '억제하거나 유도하면, 구조 점수가 낮은 성분도 노출이 올라갈 수 있습니다. 아래는 ' +
+        '<strong>문헌에 보고된 사례와 구조 경보</strong>이며, 상호작용의 크기를 예측한 값이 아닙니다.</p>' +
+        cyp.map(function(c){
+          return '<div class="alert-row"><span class="dot" style="background:var(--accent)"></span><span>' +
+            '<span class="a-name">' + esc(c.title) +
+            '<span class="tierpill t-common">' + esc(c.ev) + '</span></span>' +
+            '<span class="a-mech">' + esc(c.note) + '</span>' +
+            '<span class="a-stat">입력 성분: ' + esc(c.who) + '</span></span></div>';
+        }).join('');
+    }
+
+    // union of alerts across the product
+    var union = [], uidx = {};
+    recs.forEach(function(r){
+      r.alerts.forEach(function(h){
+        if (uidx[h.a.key] == null){
+          uidx[h.a.key] = union.length;
+          union.push({a:h.a, n:h.n, who:[r.label]});
+        } else {
+          var u = union[uidx[h.a.key]];
+          u.n += h.n;
+          if (u.who.indexOf(r.label) < 0) u.who.push(r.label);
+        }
+      });
+    });
+    union.forEach(function(u){ u.where = u.who.join(', '); });
+    var rank = {strong:0, moderate:1, common:2};
+    union.sort(function(x, y){ return rank[x.a.tier] - rank[y.a.tier]; });
+    $('malerts').innerHTML = alertBody(union, true);
+
+    $('mresult').hidden = false;
+    $('result').hidden = true;
+    $('card-struct').hidden = true;
+    printMeta(asProduct
+      ? '처방 단위 · 성분 ' + recs.length + '종' + (anyDose ? ' · 총 ' + total.toLocaleString() + ' mg/일' : '')
+      : '배치 평가 · ' + recs.length + '종');
+    histPush({mode:asProduct ? '처방' : '배치',
+              label:(asProduct && top ? top.label + ' 주도 ' : '') + recs.length + '종',
+              smiles:'', dose:anyDose ? total : null,
+              p:top ? top.out.p : 0, tier:tier.ko,
+              ad:oodn.length ? oodn.length + '종 범위밖' : '범위 안'});
+  }
+
+  function tile(k, v, n){
+    return '<div class="tile"><div class="k">' + esc(k) + '</div>' +
+           '<div class="v">' + esc(v) + '</div><div class="n">' + esc(n) + '</div></div>';
+  }
+
+  function esc(s){
+    return String(s == null ? '' : s).replace(/[&<>"]/g, function(c){
+      return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];
+    });
+  }
+
+  function printMeta(what){
+    var d = new Date();
+    var pad = function(n){ return (n < 10 ? '0' : '') + n; };
+    $('print-meta').textContent = what + ' · 생성 ' + d.getFullYear() + '-' +
+      pad(d.getMonth()+1) + '-' + pad(d.getDate()) + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes()) +
+      ' · 모델 ' + MODEL.architecture + ' (교사 hold-out ROC-AUC ' +
+      (MODEL.teacher_holdout_auc || 0).toFixed(3) + ')';
+  }
+
+  /* ---------------- history ---------------- */
+  function histRead(){
+    try { return JSON.parse(localStorage.getItem(HIST_KEY)) || []; }
+    catch (e) { return []; }
+  }
+  function histPush(e){
+    e.t = Date.now();
+    var h = histRead();
+    h.unshift(e);
+    try { localStorage.setItem(HIST_KEY, JSON.stringify(h.slice(0, 50))); } catch (err) {}
+    histRender();
+  }
+  function histRender(){
+    var h = histRead(), el = $('hist-list');
+    if (!h.length){ el.innerHTML = '<p class="empty">아직 기록이 없습니다.</p>'; return; }
+    el.innerHTML = h.slice(0, 20).map(function(e, i){
+      var d = new Date(e.t);
+      var pad = function(n){ return (n < 10 ? '0' : '') + n; };
+      // only single-compound entries can be replayed, so only those look clickable
+      var can = !!e.smiles;
+      var tag = can ? 'button' : 'div';
+      return '<' + tag + ' class="hist-item"' +
+        (can ? ' data-h="' + i + '" type="button"' : ' style="cursor:default"') + '>' +
+        '<span class="hl">' + esc(e.label) +
+        (e.dose ? ' <span class="ht">' + e.dose.toLocaleString() + ' mg</span>' : '') +
+        '<br><span class="ht">' + esc(e.mode) + ' · ' + esc(e.tier) + ' · ' + esc(e.ad) + '</span></span>' +
+        '<span class="ht">' + (e.p * 100).toFixed(0) + '<br>' +
+        pad(d.getMonth()+1) + '/' + pad(d.getDate()) + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes()) +
+        '</span></' + tag + '>';
+    }).join('');
+  }
+
+  /* ---------------- CSV ---------------- */
+  function parseCSV(text){
+    var rows = [], row = [], cur = '', q = false, i, c;
+    text = String(text).replace(/^﻿/, '');
+    for (i = 0; i < text.length; i++){
+      c = text[i];
+      if (q){
+        if (c === '"'){
+          if (text[i+1] === '"'){ cur += '"'; i++; } else q = false;
+        } else cur += c;
+      } else if (c === '"'){ q = true; }
+      else if (c === ','){ row.push(cur); cur = ''; }
+      else if (c === '\n'){ row.push(cur); rows.push(row); row = []; cur = ''; }
+      else if (c !== '\r'){ cur += c; }
+    }
+    if (cur !== '' || row.length){ row.push(cur); rows.push(row); }
+    return rows.filter(function(r){ return r.some(function(v){ return String(v).trim() !== ''; }); });
+  }
+  function csvToComps(text){
+    var rows = parseCSV(text);
+    if (!rows.length) return [];
+    var head = rows[0].map(function(h){ return String(h).trim().toLowerCase(); });
+    var find = function(names){
+      for (var i = 0; i < head.length; i++)
+        if (names.indexOf(head[i]) >= 0) return i;
+      return -1;
+    };
+    var iS = find(['smiles','구조','smi']);
+    var iN = find(['name','성분','성분명','compound','ko','name_ko','name_en']);
+    var iD = find(['dose_mg','dose','mg','mg_per_day','함량','섭취량','mg/일']);
+    var body = rows.slice(1);
+    // a headerless single-column file is still usable
+    if (iS < 0 && iN < 0){ iS = 0; body = rows; }
+    return body.map(function(r){
+      var q = iS >= 0 ? String(r[iS] || '').trim() : '';
+      if (!q && iN >= 0) q = String(r[iN] || '').trim();
+      var d = iD >= 0 ? parseFloat(String(r[iD] || '').replace(/[, ]/g, '')) : NaN;
+      return {q:q, mg:isFinite(d) ? d : ''};
+    }).filter(function(x){ return x.q; });
+  }
+  // Saving a file: the hosted viewer routes through the downloads capability, because a
+  // plain <a download> silently does nothing there. Static hosting keeps the link fallback.
+  var DL = null;
+  function initDownloads(){
+    try {
+      if (window.claude && typeof window.claude.use === 'function'){
+        window.claude.use('downloads').then(function(d){ DL = d; }, function(){ DL = null; });
+      }
+    } catch (e) { DL = null; }
+  }
+  function linkSave(name, text){
+    var blob = new Blob(['﻿' + text], {type:'text/csv;charset=utf-8'});
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = name;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(function(){ URL.revokeObjectURL(a.href); a.remove(); }, 0);
+  }
+  function download(name, text){
+    if (DL && typeof DL.save === 'function'){
+      DL.save({filename:name, data:'﻿' + text}).catch(function(){ linkSave(name, text); });
+      return;
+    }
+    linkSave(name, text);
+  }
+  function csvCell(v){
+    v = String(v == null ? '' : v);
+    return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v;
+  }
+  function csvOf(rows){
+    return rows.map(function(r){ return r.map(csvCell).join(','); }).join('\n');
+  }
+
+  /* ---------------- component rows ---------------- */
+  function compRow(q, mg){
+    var d = document.createElement('div');
+    d.className = 'comp';
+    d.innerHTML = '<input type="text" class="cq" spellcheck="false" placeholder="SMILES 또는 성분명">' +
+                  '<input type="number" class="cm" min="0" step="any" placeholder="mg/일">' +
+                  '<button class="del" type="button" title="삭제">×</button>';
+    d.querySelector('.cq').value = q || '';
+    d.querySelector('.cm').value = (mg === 0 || mg) ? mg : '';
+    d.querySelector('.del').addEventListener('click', function(){
+      d.remove();
+      if (!$('comps').children.length) addComp();
+    });
+    $('comps').appendChild(d);
+    return d;
+  }
+  function addComp(q, mg){ return compRow(q, mg); }
+  function setComps(list){
+    $('comps').innerHTML = '';
+    (list && list.length ? list : [{q:'', mg:''}]).forEach(function(c){ addComp(c.q, c.mg); });
+  }
+  function readComps(){
+    return Array.prototype.map.call($('comps').querySelectorAll('.comp'), function(d){
+      var mg = parseFloat(d.querySelector('.cm').value);
+      return {q:d.querySelector('.cq').value.trim(), mg:isFinite(mg) ? mg : null};
+    }).filter(function(c){ return c.q; });
+  }
+
+  /* ---------------- model card ---------------- */
+  function modelCard(){
+    var cp = DATA.performance.chemprop, bl = DATA.performance.baselines;
+    var rows = [];
+    function fmt(m, key){ return m ? (m[key].mean.toFixed(3) + ' ± ' + m[key].sd.toFixed(3)) : '—'; }
+    if (cp && cp.pretrained) {
+      rows.push(['Chemprop D-MPNN (Tox21 사전학습)', fmt(cp.pretrained.test,'roc_auc'),
+                 fmt(cp.pretrained.test,'prc_auc'), fmt(cp.pretrained.test,'sensitivity'),
+                 fmt(cp.pretrained.test,'specificity')]);
+      rows.push(['Chemprop D-MPNN (사전학습 없음)', fmt(cp.scratch.test,'roc_auc'),
+                 fmt(cp.scratch.test,'prc_auc'), fmt(cp.scratch.test,'sensitivity'),
+                 fmt(cp.scratch.test,'specificity')]);
+    }
+    if (bl) Object.keys(bl).forEach(function(k){
+      rows.push([k + ' (ECFP4 지문)', fmt(bl[k].test,'roc_auc'), fmt(bl[k].test,'prc_auc'),
+                 fmt(bl[k].test,'sensitivity'), fmt(bl[k].test,'specificity')]);
+    });
+    var html = '<div class="scroll"><table><thead><tr><th>모델</th><th>ROC-AUC</th><th>PRC-AUC</th><th>민감도</th><th>특이도</th></tr></thead><tbody>' +
+      rows.map(function(r, i){
+        return '<tr' + (i === 0 ? ' style="font-weight:600"' : '') + '><td>' + esc(r[0]) + '</td>' +
+               r.slice(1).map(function(v){ return '<td class="num">' + v + '</td>'; }).join('') + '</tr>';
+      }).join('') + '</tbody></table></div>';
+    html += '<p class="note" style="margin-top:11px">Bemis–Murcko <strong>scaffold split</strong> 5회 반복의 평균 ± 표준편차입니다. ' +
+            '학습 데이터와 골격이 겹치지 않는 화합물만 평가하므로, 무작위 분할보다 낮고 현실에 가까운 수치입니다.</p>';
+    html += '<p class="note">학습 데이터: FDA DILIrank ' + DATA.n_train + '종 (양성 ' + DATA.n_pos +
+            ' / 음성 ' + (DATA.n_train - DATA.n_pos) + ') · 사전학습: Tox21 7,510종 × 12종 in-vitro assay' +
+            (DATA.performance.pretrain ? ' (평균 ROC-AUC ' + DATA.performance.pretrain.tox21_val_mean_auc.toFixed(3) + ')' : '') + '.</p>';
+    html += '<p class="note">데이터가 696종 규모일 때는 <strong>지문 기반 Random Forest도 D-MPNN과 대등하거나 더 좋습니다.</strong> ' +
+            '잘 알려진 현상이고, 숨기지 않고 함께 싣습니다. 다만 사전학습의 효과는 분명해서, 같은 D-MPNN에서 Tox21 사전학습을 넣으면 ROC-AUC가 ' +
+            (cp ? '0.648 → 0.721로 0.073' : '') + ' 올라갑니다. 데이터가 늘어날수록 커지는 쪽은 이 방향입니다.</p>';
+    html += '<p class="note">이 화면의 모델은 <strong>D-MPNN 앙상블과 Random Forest를 동일 가중으로 합친 교사</strong>를 ' +
+            (MODEL.pool_size || 0).toLocaleString() + '종 화합물에 대해 증류한 경량 모델입니다 (교사와의 상관 r = ' +
+            (MODEL.fidelity_r || 0).toFixed(3) + ', 교사 hold-out ROC-AUC ' + (MODEL.teacher_holdout_auc || 0).toFixed(3) +
+            ' / 학생 ' + (MODEL.student_holdout_auc || 0).toFixed(3) + '). 브라우저 안에서 전부 계산되며 입력한 구조는 서버로 전송되지 않습니다.</p>';
+    html += '<p class="note"><strong>위험 점수는 확률이 아닙니다.</strong> 후보를 줄 세우기 위한 상대 지표입니다. ' +
+            '보유한 hold-out이 71종뿐이라 절대 확률로 보정하기에는 표본이 부족하다고 판단해, 확률로 환산하지 않고 ' +
+            '점수·순위와 <strong>held-out ' + CTX.score_bins_meta.n + '종의 구간별 관측 양성률</strong>로 제시합니다.</p>';
+    html += '<p class="note"><strong>용량·노출 축과 구조 경보는 모델 출력이 아닙니다.</strong> ' +
+            '전자는 공표된 용량–DILI 문헌에서 가져온 규칙표이고, 후자는 SMARTS 부분구조 탐지입니다. ' +
+            '둘 다 구조 점수를 바꾸지 않으며, 점수와 나란히 놓고 함께 읽도록 설계했습니다.</p>';
+    $('modelcard').innerHTML = html;
+  }
+
+  /* ---------------- structure editor (JSME) ---------------- */
+  // JSME is a self-contained GWT bundle: a local copy is used when present so the
+  // app still works offline, and jsDelivr is the fallback. Loaded on first use only
+  // (~430 KB), because most sessions go through the SMILES box or the demo chips.
+  var JSME_SOURCES = [
+    'jsme/jsme.nocache.js',
+    'https://cdn.jsdelivr.net/npm/jsme-editor@2024.4.29/jsme.nocache.js'
+  ];
+  var jsme = null, jsmeReady = null, drawTarget = 'single';
+
+  function loadJsme(){
+    if (jsmeReady) return jsmeReady;
+    jsmeReady = new Promise(function(resolve, reject){
+      var settled = false, i = 0;
+      function stop(msg){
+        if (settled) return;
+        settled = true; clearTimeout(timer); reject(new Error(msg));
+      }
+      // GWT fetches its own permutation, so a stall there never fires script.onerror.
+      var timer = setTimeout(function(){ stop('편집기 응답 시간이 초과되었습니다'); }, 25000);
+      window.jsmeOnLoad = function(){
+        if (settled) return;
+        settled = true; clearTimeout(timer); resolve();
+      };
+      (function next(){
+        if (i >= JSME_SOURCES.length) { stop('편집기 스크립트를 불러오지 못했습니다'); return; }
+        var s = document.createElement('script');
+        s.src = JSME_SOURCES[i++];
+        s.async = true;
+        s.onerror = function(){
+          if (s.parentNode) s.parentNode.removeChild(s);
+          next();
+        };
+        document.head.appendChild(s);
+      })();
+    });
+    return jsmeReady;
+  }
+
+  // JSME wants explicit pixel dimensions and needs ~430px to show its whole
+  // toolbar, which a phone cannot give it. Below that it is built at full size and
+  // scaled down with a transform; JSME maps pointer coordinates through it correctly.
+  var EDITOR_MIN_W = 430;
+
+  function editorSize(){
+    var avail = Math.round($('editor').clientWidth) || 640;
+    var w = Math.max(EDITOR_MIN_W, avail);
+    return {w:w, h:Math.max(320, Math.min(470, Math.round(w * 0.72))),
+            scale:Math.min(1, avail / w)};
+  }
+
+  function applyEditorSize(sz){
+    var host = $('jsme');
+    host.style.width = sz.w + 'px';
+    host.style.transformOrigin = 'top left';
+    host.style.transform = sz.scale < 1 ? 'scale(' + sz.scale + ')' : '';
+    var painted = Math.ceil(sz.h * sz.scale);
+    $('editor').style.height = painted + 'px';
+    $('editor').style.minHeight = painted + 'px';
+  }
+
+  function ensureEditor(){
+    return loadJsme().then(function(){
+      if (jsme) return jsme;
+      var sz = editorSize();
+      jsme = new window.JSApplet.JSME('jsme', sz.w + 'px', sz.h + 'px', {options:'newlook,noreaction'});
+      try { jsme.setUserInterfaceBackgroundColor('#ffffff'); } catch (e) {}
+      applyEditorSize(sz);
+      $('jsme-msg').hidden = true;
+      if (window.ResizeObserver) {
+        var lastW = sz.w, lastScale = sz.scale;
+        // observe the dialog, not the shell, whose own height is set just above
+        new ResizeObserver(function(){
+          var n = editorSize();
+          if (Math.abs(n.w - lastW) < 8 && Math.abs(n.scale - lastScale) < 0.02) return;
+          lastW = n.w; lastScale = n.scale;
+          try { jsme.setSize(n.w + 'px', n.h + 'px'); } catch (e) {}
+          applyEditorSize(n);
+        }).observe($('drawdlg'));
+      }
+      return jsme;
+    });
+  }
+
+  function openDraw(target){
+    drawTarget = target;
+    clearErr();
+    var single = target === 'single';
+    $('run-draw').textContent = single ? '이 구조로 예측' : '이 구조를 성분으로 추가';
+    $('draw-load').hidden = !single;      // nothing single to import in product mode
+    $('draw-hint').innerHTML = single
+      ? '예측을 누르면 그린 구조가 표준 SMILES로 변환되어 입력란에 채워지고 결과가 갱신됩니다. <b>가져오기</b>는 지금 분석 중인 분자를 편집기로 불러와 치환기만 바꿔볼 때 쓰세요.'
+      : '그린 구조가 표준 SMILES로 변환되어 성분 목록에 추가됩니다. 섭취량은 추가된 줄에 입력하세요.';
+    $('drawdlg').showModal();             // must be laid out before JSME is measured
+    if (jsme) return;
+    $('jsme-msg').hidden = false;
+    $('jsme-msg').innerHTML = '<span class="spin"></span><span>구조 편집기를 불러오는 중…</span>';
+    ensureEditor().catch(function(e){
+      $('jsme-msg').hidden = false;
+      $('jsme-msg').innerHTML = '<span>구조 편집기를 불러오지 못했습니다. SMILES 입력란을 사용해 주세요.' +
+        '<br><span style="font-size:11.5px;opacity:.7">' + esc(e && e.message ? e.message : e) + '</span></span>';
+    });
+  }
+
+  // Molfile keeps the drawn geometry, which RDKit reads more reliably than JSME SMILES
+  // for charges and stereo; SMILES is the fallback and the emptiness check.
+  function drawnInput(){
+    var smi = '', mb = '';
+    try { smi = String(jsme.smiles() || '').trim(); } catch (e) { smi = ''; }
+    if (!smi) return null;
+    try { mb = String(jsme.molFile(false) || ''); }
+    catch (e) {
+      try { mb = String(jsme.molFile() || ''); } catch (e2) { mb = ''; }
+    }
+    return {smiles:smi, molblock:mb};
+  }
+
+  // Training structures were desalted and filtered (>=3 heavy atoms, 50-1500 Da).
+  // A canvas makes stray or disconnected atoms easy to leave behind, so a drawing
+  // outside those assumptions is refused instead of quietly scored.
+  function vetDrawn(smiles){
+    if (smiles.indexOf('.') >= 0)
+      return '그린 구조가 서로 떨어진 조각으로 나뉘어 있습니다. 모델은 단일 분자를 가정합니다. 결합으로 잇거나 남은 원자를 지워주세요.';
+    var mol = null, d = {};
+    try { mol = RDKit.get_mol(smiles); } catch (e) { mol = null; }
+    if (!mol) return '그린 구조를 화학적으로 해석하지 못했습니다.';
+    try { d = JSON.parse(mol.get_descriptors()); } catch (e) { d = {}; }
+    mol.delete();
+    if (Number(d.NumHeavyAtoms) < 3)
+      return '원자가 너무 적습니다. 모델은 중원자 3개 이상인 분자로 학습했습니다.';
+    var mw = Number(d.amw);
+    if (!(mw >= 50 && mw <= 1500))
+      return '분자량 ' + mw.toFixed(0) + ' g/mol은 학습 데이터 범위(50–1500) 밖이라 결과를 신뢰할 수 없습니다.';
+    return null;
+  }
+
+  // Put the drawn SMILES in the first empty component row, or append one.
+  function putComp(smiles){
+    var rows = $('comps').querySelectorAll('.comp .cq');
+    for (var i = 0; i < rows.length; i++){
+      if (!rows[i].value.trim()) { rows[i].value = smiles; rows[i].focus(); return; }
+    }
+    addComp(smiles, '');
+  }
+
+  function runDrawn(){
+    clearErr();
+    if (!jsme) { showErr('구조 편집기가 아직 준비되지 않았습니다. 잠시 후 다시 시도해 주세요.'); return; }
+    var drawn = drawnInput();
+    if (!drawn) {
+      showErr('먼저 구조를 그려주세요. 왼쪽 원소 버튼으로 원자를 놓고 결합 도구로 이으면 됩니다.');
+      return;
+    }
+    var canon = null;
+    if (drawn.molblock) canon = canonical(drawn.molblock);
+    if (!canon) canon = canonical(drawn.smiles);
+    if (!canon) {
+      showErr('그린 구조를 화학적으로 해석하지 못했습니다. 열린 결합이나 원자가 오류가 없는지 확인해 주세요.');
+      return;
+    }
+    var problem = vetDrawn(canon);
+    if (problem) { showErr(problem); return; }
+    if (drawTarget === 'multi') {
+      putComp(canon);                   // the user may still want to add more
+      $('drawdlg').close();
+      return;
+    }
+    $('smiles').value = canon;          // the drawn molecule stays visible and copyable
+    $('drawdlg').close();
+    go('구조 그리기 입력');
+  }
+
+  function loadIntoEditor(){
+    var txt = $('smiles').value.trim();
+    if (!txt) { showErr('가져올 분자가 없습니다. 입력란에 SMILES를 넣거나 시연용 성분을 먼저 선택하세요.'); return; }
+    var res = null;
+    try { res = resolve(txt); } catch (e) { res = null; }
+    if (!res || !res.mol || !res.mol.is_valid()) {
+      if (res && res.mol) res.mol.delete();
+      showErr('가져올 구조를 인식하지 못했습니다.');
+      return;
+    }
+    // 2D coordinates first, so the editor shows a laid-out structure instead of a pile.
+    var payload = null;
+    try { res.mol.set_new_coords(); payload = res.mol.get_molblock(); } catch (e) { payload = null; }
+    if (!payload) { try { payload = res.mol.get_smiles(); } catch (e) { payload = res.smiles; } }
+    res.mol.delete();
+    clearErr();
+    ensureEditor().then(function(){
+      try { jsme.readGenericMolecularInput(payload); }
+      catch (e) {
+        try { jsme.readMolecule(payload); } catch (e2) {
+          showErr('편집기로 구조를 전달하지 못했습니다.');
+        }
+      }
+    }).catch(function(){ showErr('구조 편집기를 불러오지 못했습니다.'); });
+  }
+
+  /* ---------------- wiring ---------------- */
+  // While the editor is open the console's message sits behind the backdrop, so the
+  // dialog carries its own.
+  function showErr(msg){
+    var el = $('drawdlg').open ? $('draw-err') : $('err');
+    el.hidden = false;
+    el.textContent = msg;
+  }
+  function clearErr(){
+    $('err').hidden = true;
+    $('draw-err').hidden = true;
+  }
+  function fail(msg){ showErr(msg); }
+  function go(sourceLabel){
+    clearErr();
+    var dose = parseFloat($('dose').value);
+    var lp   = parseFloat($('logp').value);
+    var rec;
+    try { rec = score($('smiles').value, isFinite(dose) ? dose : null,
+                      isFinite(lp) ? lp : null, sourceLabel); }
+    catch (e) { rec = null; }
+    if (!rec){
+      fail('구조를 인식하지 못했습니다. SMILES 문자열이나 아래 성분 버튼을 사용해 주세요.');
+      return;
+    }
+    if (LAST && LAST.mol) { try { LAST.mol.delete(); } catch (e) {} }
+    renderSingle(rec);
+  }
+
+  // Encode the current single result as a shareable URL hash (#smiles=...&dose=...&logp=...).
+  // Reading it back on load reopens the same result. Uses the evaluated (desalted)
+  // structure so a shared link always carries the clean body.
+  function resultHash(){
+    var p = new URLSearchParams();
+    p.set('smiles', (LAST && LAST.smiles) || $('smiles').value.trim());
+    var dose = (LAST && LAST.exp && LAST.exp.known) ? LAST.exp.dose : $('dose').value;
+    if (dose) p.set('dose', dose);
+    var lp = (LAST && LAST.exp && LAST.exp.measured != null) ? LAST.exp.measured : $('logp').value;
+    if (lp !== '' && lp != null) p.set('logp', lp);
+    return '#' + p.toString();
+  }
+  function goMulti(){
+    $('err').hidden = true;
+    var comps = readComps();
+    if (!comps.length){ fail('성분을 한 개 이상 입력해 주세요.'); return; }
+    var recs = [], failed = [];
+    comps.forEach(function(c){
+      var r = null;
+      try { r = score(c.q, c.mg); } catch (e) { r = null; }
+      if (r){ recs.push(r); } else { failed.push(c.q); }
+    });
+    if (!recs.length){ fail('입력한 성분을 하나도 인식하지 못했습니다.'); return; }
+    if (LASTM) LASTM.recs.forEach(function(r){ try { r.mol.delete(); } catch (e) {} });
+    renderMulti(recs, failed, $('asproduct').checked);
+    recs.forEach(function(r){ try { r.mol.delete(); } catch (e) {} });
+    LASTM.recs.forEach(function(r){ r.mol = null; });
+  }
+  function mode(which){
+    var single = which === 'single';
+    $('tab-single').setAttribute('aria-selected', single ? 'true' : 'false');
+    $('tab-multi').setAttribute('aria-selected', single ? 'false' : 'true');
+    $('pane-single').hidden = !single;
+    $('pane-multi').hidden = single;
+    $('card-chips').hidden = !single;
+    $('card-struct').hidden = !single;
+    $('err').hidden = true;
+  }
+
+  function chips(){
+    var nat = DATA.demo.filter(function(d){ return d.kind === 'natural'; });
+    var drg = DATA.demo.filter(function(d){ return d.kind !== 'natural'; });
+    function build(list, el, cls){
+      el.innerHTML = list.map(function(d){
+        return '<button class="chip ' + cls + '" data-s="' + esc(d.s) + '" title="' + esc(d.en) + ' · ' + esc(d.src) + '">' + esc(d.ko) + '</button>';
+      }).join('');
+      el.addEventListener('click', function(ev){
+        var b = ev.target.closest('.chip');
+        if (!b) return;
+        $('smiles').value = b.dataset.s;
+        go();
+        $('result').scrollIntoView({behavior:'smooth', block:'start'});
+      });
+    }
+    build(nat, $('chips-nat'), '');
+    build(drg, $('chips-drug'), 'drug');
+  }
+
+  function boot(){
+    Promise.all([
+      window.initRDKitModule({ locateFile: function(){ return 'rdkit/RDKit_minimal.wasm'; } }),
+      fetch('data/student.json').then(function(r){ return r.json(); }),
+      fetch('data/app.json').then(function(r){ return r.json(); }),
+      fetch('data/context.json').then(function(r){ return r.json(); })
+    ]).then(function(v){
+      RDKit = v[0]; MODEL = v[1]; DATA = v[2]; CTX = v[3];
+      REF = DATA.reference.map(function(r){ r.bits = hexToBits(r.fp); return r; });
+
+      // compile the alert SMARTS once; drop any pattern this RDKit build rejects
+      CTX.alerts.forEach(function(a){
+        var qs = [];
+        a.smarts.forEach(function(sma){
+          try {
+            var q = RDKit.get_qmol(sma);
+            if (q && q.is_valid()) qs.push(q); else if (q) q.delete();
+          } catch (e) {}
+        });
+        if (qs.length) QALERT.push({meta:a, q:qs});
+      });
+
+      chips();
+      modelCard();
+      setComps(null);
+      histRender();
+      $('boot').hidden = true;
+
+      $('run').addEventListener('click', function(){ go(); });
+      $('clear').addEventListener('click', function(){
+        $('smiles').value = ''; $('dose').value = ''; $('logp').value = '';
+        $('result').hidden = true;
+        $('paper').innerHTML = '<span class="ph">분자를 입력하면 구조가 표시됩니다</span>';
+      });
+      $('smiles').addEventListener('keydown', function(e){
+        if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') go();
+      });
+      $('dose').addEventListener('keydown', function(e){ if (e.key === 'Enter') go(); });
+      $('logp').addEventListener('keydown', function(e){ if (e.key === 'Enter') go(); });
+
+      $('tab-single').addEventListener('click', function(){ mode('single'); });
+      $('tab-multi').addEventListener('click', function(){ mode('multi'); });
+      $('addcomp').addEventListener('click', function(){ addComp(); });
+      $('loadpreset').addEventListener('click', function(){ setComps(PRESET); });
+
+      // structure editor
+      $('open-draw').addEventListener('click', function(){ openDraw('single'); });
+      $('drawcomp').addEventListener('click', function(){ openDraw('multi'); });
+      $('draw-close').addEventListener('click', function(){ $('drawdlg').close(); });
+      $('run-draw').addEventListener('click', runDrawn);
+      $('draw-load').addEventListener('click', loadIntoEditor);
+      $('draw-clear').addEventListener('click', function(){
+        if (!jsme) return;
+        try { jsme.reset(); } catch (e) { try { jsme.clear(); } catch (e2) {} }
+        clearErr();
+      });
+      $('drawdlg').addEventListener('close', clearErr);
+      // warm the bundle on intent, so the panel opens without a visible wait
+      ['pointerenter','focus'].forEach(function(ev){
+        $('open-draw').addEventListener(ev, function(){ loadJsme().catch(function(){}); }, {once:true});
+      });
+      $('runmulti').addEventListener('click', goMulti);
+      $('clearmulti').addEventListener('click', function(){
+        setComps(null); $('mresult').hidden = true;
+      });
+      $('csv').addEventListener('change', function(ev){
+        var f = ev.target.files && ev.target.files[0];
+        if (!f) return;
+        var rd = new FileReader();
+        rd.onload = function(){
+          var list = csvToComps(rd.result);
+          if (!list.length){ fail('CSV에서 성분을 읽지 못했습니다. name / smiles / dose_mg 열을 확인해 주세요.'); return; }
+          setComps(list);
+          $('err').hidden = true;
+          goMulti();
+        };
+        rd.readAsText(f);
+      });
+
+      $('print1').addEventListener('click', function(){ window.print(); });
+      $('copylink').addEventListener('click', function(){
+        if (!LAST) return;
+        var url = location.origin + location.pathname + resultHash();
+        var btn = $('copylink'), label = btn.textContent;
+        var done = function(){ btn.textContent = '링크 복사됨 ✓';
+          setTimeout(function(){ btn.textContent = label; }, 1600); };
+        if (navigator.clipboard && navigator.clipboard.writeText){
+          navigator.clipboard.writeText(url).then(done, function(){ window.prompt('이 링크를 복사하세요', url); });
+        } else { window.prompt('이 링크를 복사하세요', url); }
+      });
+      initDownloads();
+      $('vs-verdict').addEventListener('click', function(){ showResultView('verdict'); });
+      $('vs-evidence').addEventListener('click', function(){ showResultView('evidence'); });
+      $('print2').addEventListener('click', function(){ window.print(); });
+      $('mcsv').addEventListener('click', function(){
+        if (!LASTM) return;
+        var total = LASTM.recs.reduce(function(a, r){ return a + (r.exp.known ? r.exp.dose : 0); }, 0);
+        var rows = [['name','smiles','dose_mg_per_day','fraction','risk_score','ci_lo','ci_hi',
+                     'tier','ad','nearest_tanimoto','mol_weight','crippen_clogp',
+                     'exposure_band','rule_of_two','priority',
+                     'alerts_strong','alerts_moderate','alerts_common','alert_keys']];
+        LASTM.recs.forEach(function(r){
+          rows.push([r.label, r.smiles, r.exp.known ? r.exp.dose : '',
+            (LASTM.asProduct && total && r.exp.known) ? (r.exp.dose / total).toFixed(4) : '',
+            r.out.p.toFixed(4), r.out.lo.toFixed(4), r.out.hi.toFixed(4), r.tier.ko,
+            r.ad.label, r.ad.best.toFixed(3),
+            r.exp.mw.toFixed(1), r.exp.clogp.toFixed(2),
+            r.exp.known ? r.exp.band.ko : '', r.exp.known ? (r.exp.ro2 ? 'positive' : 'negative') : '',
+            r.prio == null ? '' : PRIO[r.prio].ko,
+            r.counts.strong, r.counts.moderate, r.counts.common,
+            r.alerts.map(function(h){ return h.a.key; }).join(' ')]);
+        });
+        download('hepalens-batch.csv', csvOf(rows));
+      });
+
+      $('alertbody').addEventListener('click', function(ev){
+        var b = ev.target.closest('.alert-row');
+        if (!b || !LAST || !LAST.mol) return;
+        var h = LAST.alerts[Number(b.dataset.al)];
+        if (!h) return;
+        var ok = drawStruct(LAST.mol, h.atoms);
+        $('hl-tag').textContent = ok ? h.a.ko + ' 표시 중' : '';
+      });
+
+      $('hist-list').addEventListener('click', function(ev){
+        var b = ev.target.closest('.hist-item');
+        if (!b || b.dataset.h == null) return;
+        var e = histRead()[Number(b.dataset.h)];
+        if (!e || !e.smiles) return;
+        mode('single');
+        $('smiles').value = e.smiles;
+        $('dose').value = e.dose || '';
+        $('logp').value = e.logp == null ? '' : e.logp;
+        go();
+      });
+      $('histclear').addEventListener('click', function(){
+        try { localStorage.removeItem(HIST_KEY); } catch (e) {}
+        histRender();
+      });
+      $('histcsv').addEventListener('click', function(){
+        var h = histRead();
+        var rows = [['timestamp','mode','label','smiles','dose_mg_per_day','risk_score','tier','ad']];
+        h.forEach(function(e){
+          rows.push([new Date(e.t).toISOString(), e.mode, e.label, e.smiles,
+                     e.dose == null ? '' : e.dose, e.p.toFixed(4), e.tier, e.ad]);
+        });
+        download('hepalens-history.csv', csvOf(rows));
+      });
+
+      // a shared link (#smiles=...&dose=...&logp=...) reopens that exact result;
+      // otherwise open on a worked example so the first frame shows what the tool does.
+      var fromLink = false;
+      try {
+        var hp = new URLSearchParams((location.hash || '').replace(/^#/, ''));
+        var hs = hp.get('smiles');
+        if (hs) {
+          $('smiles').value = hs;
+          if (hp.get('dose')) $('dose').value = hp.get('dose');
+          if (hp.get('logp')) $('logp').value = hp.get('logp');
+          fromLink = true;
+        }
+      } catch (e) {}
+      if (!fromLink) {
+        var seed = DATA.demo.filter(function(d){ return d.en === 'Usnic acid'; })[0] || DATA.demo[0];
+        $('smiles').value = seed.s;
+      }
+      go();
+    }).catch(function(e){
+      $('boot').innerHTML = '<span>불러오지 못했습니다: ' + esc(e && e.message ? e.message : e) + '</span>';
+    });
+  }
+  boot();
+})();
+</script>
+</body>
+</html>
