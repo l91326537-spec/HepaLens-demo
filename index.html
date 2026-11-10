@@ -401,6 +401,19 @@ footer p{font-size:12px; color:var(--fg-dim)}
   .matrix .here{outline:2.5px solid #000}
 }
 .printfoot{display:none}
+
+/* ---------- QR share ---------- */
+.qr-btn{ background:rgba(255,255,255,.15); color:inherit; border:1px solid rgba(255,255,255,.4); border-radius:8px; padding:7px 13px; font-size:13px; font-weight:600; cursor:pointer; white-space:nowrap; }
+.qr-btn:hover{ background:rgba(255,255,255,.28); }
+dialog.qr-dlg{ border:none; border-radius:14px; padding:0; width:330px; max-width:92vw; box-shadow:0 20px 60px rgba(0,0,0,.45); }
+dialog.qr-dlg::backdrop{ background:rgba(6,15,24,.62); }
+.qr-dlg .in{ padding:20px; text-align:center; background:var(--surface); color:var(--fg); border-radius:14px; }
+.qr-dlg h3{ margin:0 0 4px; font-size:16px; color:var(--accent); }
+.qr-dlg .sub{ margin:0 0 14px; font-size:12.5px; color:var(--fg-dim); }
+.qr-dlg .qbox{ background:#fff; border-radius:10px; padding:12px; display:inline-block; }
+.qr-dlg .qbox img{ width:230px; height:230px; display:block; image-rendering:pixelated; }
+.qr-dlg .url{ margin-top:12px; font-family:var(--mono); font-size:11px; color:var(--fg-dim); word-break:break-all; }
+.qr-dlg .close{ margin-top:16px; width:100%; padding:11px; border:none; border-radius:9px; background:var(--accent); color:#fff; font-weight:600; font-size:14px; cursor:pointer; }
 </style>
 </head>
 <body>
@@ -408,8 +421,18 @@ footer p{font-size:12px; color:var(--fg-dim)}
   <div class="wrap">
     <div class="brand"><b>헤파렌즈</b><span>HepaLens</span></div>
     <div class="tagline">천연물 · 건강기능식품 간독성 AI 1차 스크리닝 &nbsp;·&nbsp; 우석대학교 약학과</div>
+    <button class="qr-btn noprint" id="qr-open">📱 폰으로 열기</button>
   </div>
 </header>
+<dialog class="qr-dlg noprint" id="qr-dlg">
+  <div class="in">
+    <h3>폰으로 열기</h3>
+    <p class="sub">카메라로 QR을 찍으면 이 앱이 열립니다.</p>
+    <div class="qbox"><img alt="HepaLens 앱 QR" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAxAAAAMQAQMAAACNNxG+AAAABlBMVEUbS3T///8HtjMWAAADZElEQVR42u3dy4rbQBAFUJH//2dnYYK6q24rzIA35SOYjKPIOouGXKqf1+vj14VAIBAIBAKBQCAQCAQCgUAgEAgEAvEr4tqu9533T/ozPZ/vvV5/ro9fCAQCgfj4defFEiLX/X//+1O/9+/++rm+Q14gEAjEzLxY02CtGO7aIiXJ+v30Dm2BQCAQs/OiVw+1slh7oM6Zoy0QCARiel7U9Kg1xFpryAsEAoH4nrxIfUttgLyMVuw9VcYvEAgEYn5e7Hd/95PerC0QCARiUl70OiLXFnvt8FSJyAsEAoGYnBdrhVFnRa1JkuZDrc/ICwQCgZibF+fZsXtS7ImRssb4BQKBQEzNi15X9B6otC5jT440fq4tEAgEYlZenNbf1Vmz+6qL/V3qCwQCgfiG+qLPl+0pUO/UHaX6aLm2QCAQiGn1Rc+NPr6d+qhqnlivh0AgEHPz4rRbVJ5Tu1cg+be8QCAQiLl5kVZx30/lObO5SjGfFoFAIObmRZorde55Suv1jF8gEAjE9LzIIxl958G1vrjv7zOl5AUCgUDMz4u+Eq9mQlp9cTpLSV4gEAjE1Pm0aT1eXblddzk/7X8uLxAIBOIaOn7Rz8/LFURajXHa2VxbIBAIxLS86Gcl9ZHtvbdqzYn6L/ICgUAg5tYXp12jaj6kuqKf2yovEAgE4hq8H8h5RDuNhO+ZkfJHWyAQCMSs+iIlxp4eeaw7Zcb6Zm2BQCAQs/Ki1xCnnqc8H2rNF/1RCAQCMTUvzp/THuZpDfj6N3mBQCAQc+uLmgb/G88+1RXWXyAQCMT8vMi1RD1hr4+I573O5QUCgUBcg/ujns8/2uuNdBKf8QsEAoGYXV+kHWjXKiOt/U5ruuubtQUCgUBMy4u8s3nfJyrvEJL6peQFAoFATOyPWuuFp32j+jqMvnZPXiAQCMR31Bf1iZoZd2KkU/fWN2sLBAKBmFhfrLXFnhFPp+zV78gLBAKBmJsXT+PeaT5tHcno827lBQKBQMzMi71OyNmxfuu5OpEXCAQC8Q150U9iPdcgtRaxvhuBQCC+KS/WnFjri76Hbd5pSl4gEAjE1Lw47zGYn+truvt6cHmBQCAQ0/Ki3l1/91Hs5xP3jF8gEAjE1Lz43IVAIBAIBAKBQCAQCAQCgUAgEAgEAvGj6y8LSbo6kq15eQAAAABJRU5ErkJggg=="></div>
+    <div class="url">l91326537-spec.github.io/HepaLens-demo/</div>
+    <button class="close" id="qr-close">닫기</button>
+  </div>
+</dialog>
 
 <main class="wrap">
   <div class="cols">
@@ -2406,6 +2429,14 @@ footer p{font-size:12px; color:var(--fg-dim)}
     });
   }
   boot();
+})();
+</script>
+<script>
+(function(){
+  var o=document.getElementById('qr-open'), d=document.getElementById('qr-dlg'), c=document.getElementById('qr-close');
+  if(o&&d) o.addEventListener('click',function(){ try{ d.showModal(); }catch(e){ d.setAttribute('open',''); } });
+  if(c&&d) c.addEventListener('click',function(){ try{ d.close(); }catch(e){ d.removeAttribute('open'); } });
+  if(d) d.addEventListener('click',function(e){ if(e.target===d){ try{ d.close(); }catch(_){} } });
 })();
 </script>
 </body>
